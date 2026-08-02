@@ -138,6 +138,10 @@ main .collapse-btn{display:block}
 .pill.ph1{background:#ecebfb;color:#5a4f9e}
 .pill.ph2{background:#fdeaf4;color:#c2417a}
 .pill.ur{background:#000;color:#fff}
+.pill.tt-task{background:#eef1ef;color:#456055}
+.pill.tt-feat{background:#e3f2fd;color:#1565c0}
+.pill.tt-cr{background:#fff3e0;color:#e65100}
+.pill.tt-iss{background:#fdecea;color:#c62828}
 .pill.hi{background:#fdecea;color:var(--pr-high)}
 .pill.me{background:#fff3e0;color:#e65100}
 .pill.lo{background:#e3f2fd;color:#1565c0}
@@ -436,9 +440,16 @@ const PRIO = {Urgent:'ur',High:'hi',Medium:'me',Low:'lo'};
 const PRIO_ORDER = {Urgent:0,High:1,Medium:2,Low:3};
 const TEAM_ASSIGNEES = {
   '':['Unassigned'],
-  'Product Team':['Georgia','Joestringer95','Jamesf','Cursor','Loveable','Unassigned'],
+  'Product Team':['Georgia','Joe','Jay','Cursor','Loveable','Unassigned'],
   'SLT':['Tom','Stuart','Mark','Unassigned'],
   'Equity Bank':['Banking Team','Unassigned']};
+const TTYPES=['Task','New Feature','Change Request','Issue'];
+const TTYPE_CLS={'Task':'task','New Feature':'feat','Change Request':'cr','Issue':'iss'};
+const APPS=['','Cursor','Loveable','Supabase','Netlify','Other'];
+function ttypePill(t){return `<span class="pill tt-${TTYPE_CLS[t.ttype]||'task'}">${esc(t.ttype||'Task')}</span>`;}
+function childTasks(t){return TASKS.filter(x=>x.parent===t.id);}
+function parentCandidates(t){return TASKS.filter(x=>!x.parent&&x.id!==t.id);}
+function parentOptions(t){return `<option value="">— None (standalone) —</option>`+parentCandidates(t).map(p=>`<option value="${p.id}" ${t.parent===p.id?'selected':''}>${esc(p.t)}</option>`).join('');}
 function teamOptions(cur){return ['','Product Team','SLT','Equity Bank'].map(v=>`<option value="${v}" ${(cur||'')===v?'selected':''}>${v||'No selection'}</option>`).join('');}
 function assigneeOptionsForTeam(team,cur){
   const names=[...new Set([...(TEAM_ASSIGNEES[team||'']||['Unassigned']),...(cur?[cur]:[])])];
@@ -455,7 +466,7 @@ let TASKS=[];let _id=0;
 function addTask(t){
   const due=t.due instanceof Date?t.due:new Date(t.due);
   TASKS.push(Object.assign({
-    id:++_id,ph:1,pr:'Medium',as:'Unassigned',team:'',d:'',prog:0,est:8,spent:0,risk:false,w9:false,deps:[],
+    id:++_id,ph:1,pr:'Medium',as:'Unassigned',team:'',ttype:'Task',parent:null,app:'',d:'',prog:0,est:8,spent:0,risk:false,w9:false,deps:[],
     subtasks:[],comments:[],attachments:[],updated:new Date(TODAY-Math.floor(rnd()*12)*864e5)
   },t,{due}));
 }
@@ -615,7 +626,7 @@ function cardHTML(t){
     <h5>📦 ${esc(t.t)}</h5>
     ${t.d?`<div class="desc">${esc(t.d)}</div>`:''}
     <div class="trow">
-      <span class="pill ph${t.ph}">${t.sub||('P'+t.ph)}</span>${t.w9?'<span class="pill hi">🏦 CRIT</span>':''}
+      ${ttypePill(t)}<span class="pill ph${t.ph}">${t.sub||('P'+t.ph)}</span>${t.w9?'<span class="pill hi">🏦 CRIT</span>':''}${childTasks(t).length?`<span class="pill dep" title="Subtasks — open task to manage">🧩 ${childTasks(t).length}</span>`:''}
       <span class="due ${late?'late':''}">📅 ${late?'⚠ ':''}${fmtD(t.due)}</span>
       <span class="pill ${PRIO[t.pr]}">${t.pr.toUpperCase()}</span>
       ${state.tgl.risk&&t.risk?'<span class="pill risk">⚠ RISK</span>':''}
@@ -662,7 +673,8 @@ function phaseCardsHTML(big){
   </div>`;
 }
 function boardHTML(){
-  const list=visibleTasks();const cols=Object.keys(STATUS);
+  const list=visibleTasks().filter(t=>!t.parent); // Kanban shows parent tasks only — subtasks live in the task window
+  const cols=Object.keys(STATUS);
   return `<div class="board">`+cols.map(s=>{
     const items=list.filter(t=>t.s===s);
     return `<div class="col" data-col="${s}">
@@ -700,6 +712,9 @@ function renderTasks(){
   // --- per-column filters (item 9) ---
   const has=(v,q)=>String(v??'').toLowerCase().includes(q.toLowerCase());
   if(f.task)list=list.filter(t=>has(t.t+' '+t.d,f.task));
+  if(f.ttype)list=list.filter(t=>(t.ttype||'Task')===f.ttype);
+  if(f.scope==='parent')list=list.filter(t=>!t.parent);
+  if(f.scope==='sub')list=list.filter(t=>!!t.parent);
   if(f.team)list=list.filter(t=>(t.team||'')===f.team);
   if(f.sub)list=list.filter(t=>(t.sub||'')===f.sub);
   if(f.status)list=list.filter(t=>t.s===f.status);
@@ -709,17 +724,19 @@ function renderTasks(){
   // --- column sort (item 8) ---
   if(S&&S.col){
     const SO=Object.keys(STATUS);
-    const key={task:t=>t.t.toLowerCase(),team:t=>(t.team||'').toLowerCase(),phase:t=>t.sub||'zz',status:t=>SO.indexOf(t.s),
+    const key={task:t=>t.t.toLowerCase(),ttype:t=>t.ttype||'Task',team:t=>(t.team||'').toLowerCase(),phase:t=>t.sub||'zz',status:t=>SO.indexOf(t.s),
       pr:t=>PRIO_ORDER[t.pr]??2,due:t=>+t.due,as:t=>t.as.toLowerCase(),prog:t=>t.prog,est:t=>t.est}[S.col];
     if(key)list=[...list].sort((a,b)=>{const x=key(a),y=key(b);return (x<y?-1:x>y?1:0)*S.dir;});
   }
   const arrow=c=>S&&S.col===c?(S.dir>0?' ▲':' ▼'):'';
-  const cols=[['task','Task'],['team','Team'],['phase','Phase'],['status','Status'],['pr','Priority'],['due','Due'],['as','Assignee'],['prog','Progress'],['est','Est.']];
+  const cols=[['task','Task'],['ttype','Task Type'],['team','Team'],['phase','Phase'],['status','Status'],['pr','Priority'],['due','Due'],['as','Assignee'],['prog','Progress'],['est','Est.']];
   const asOpts=[...new Set([...memberNames(),...taskAssignees(),'Product Team','Banking Team','Unassigned'])];
   $('#main').innerHTML=`<div class="sec-title">📋 All Tasks <span class="sub">${list.length} of ${TASKS.length} shown${list.length===0?' — <a href="#" onclick="state.search=\'\';document.getElementById(\'searchbox\').value=\'\';state.savedSearch=null;state.tblF={};render();return false" style="color:var(--accent)">clear search & filters</a>':''}</span></div>`+savedSearchHTML()+
   `<table class="tasktbl"><thead><tr>${cols.map(c=>`<th data-sort="${c[0]}" title="Click to sort">${c[1]}${arrow(c[0])}</th>`).join('')}</tr>
    <tr class="tblf">
      <th><input data-tf="task" value="${esc(f.task||'')}" placeholder="filter…"></th>
+     <th><select data-tf="ttype" style="margin-bottom:3px"><option value="">All types</option>${TTYPES.map(v=>`<option ${f.ttype===v?'selected':''}>${v}</option>`).join('')}</select>
+         <select data-tf="scope"><option value="">Parents + subtasks</option><option value="parent" ${f.scope==='parent'?'selected':''}>Parents only</option><option value="sub" ${f.scope==='sub'?'selected':''}>Subtasks only</option></select></th>
      <th><select data-tf="team"><option value="">All</option>${['Product Team','SLT','Equity Bank'].map(v=>`<option ${f.team===v?'selected':''}>${v}</option>`).join('')}</select></th>
      <th><select data-tf="sub"><option value="">All</option>${Object.keys(SUBPHASES).map(v=>`<option ${f.sub===v?'selected':''}>${v}</option>`).join('')}</select></th>
      <th><select data-tf="status"><option value="">All</option>${Object.keys(STATUS).map(v=>`<option value="${v}" ${f.status===v?'selected':''}>${STATUS[v].label}</option>`).join('')}</select></th>
@@ -729,7 +746,8 @@ function renderTasks(){
      <th></th><th></th>
    </tr></thead><tbody>`+
   list.map(t=>`<tr data-id="${t.id}">
-    <td><b>${esc(t.t)}</b>${t.risk?' <span class="pill risk">⚠</span>':''}${t.deps.length?' <span class="pill dep">🔗</span>':''}</td>
+    <td>${t.parent?'<span style="color:var(--muted)">↳</span> ':''}<b>${esc(t.t)}</b>${t.risk?' <span class="pill risk">⚠</span>':''}${t.deps.length?' <span class="pill dep">🔗</span>':''}${childTasks(t).length?` <span class="pill dep">🧩 ${childTasks(t).length}</span>`:''}</td>
+    <td>${ttypePill(t)}${t.parent?' <span class="pill dep">SUB</span>':''}</td>
     <td>${t.team?esc(t.team):'<span style="color:#aaa">—</span>'}</td>
     <td><span class="pill ph${t.ph}">${t.sub||('P'+t.ph)}</span></td>
     <td><span class="stbadge" style="background:${STATUS[t.s].col}">${STATUS[t.s].label}</span></td>
@@ -771,14 +789,20 @@ function commentsHTML(t){
 function openTask(id){
   const t=TASKS.find(x=>x.id===id);if(!t)return;
   t.comments=normComments(t.comments);
+  const kids=childTasks(t);
+  const isSub=!!t.parent;
+  const parentT=isSub?TASKS.find(x=>x.id===t.parent):null;
   const m=$('#modal');
   m.innerHTML=`<button class="close" onclick="closeModal()">✕</button>
-  <span class="pill ph${t.ph}">${t.sub?t.sub+' · '+esc(SUBPHASES[t.sub]||''):'Phase '+t.ph}</span> ${t.w9?'<span class="pill hi">🏦 CRITICAL PATH</span>':''} ${t.risk?'<span class="pill risk">⚠ RISK FLAGGED</span>':''} ${isOverdue(t)?'<span class="pill hi">OVERDUE</span>':''}
+  ${ttypePill(t)} ${isSub?'<span class="pill dep">🧩 SUBTASK</span>':''} <span class="pill ph${t.ph}">${t.sub?t.sub+' · '+esc(SUBPHASES[t.sub]||''):'Phase '+t.ph}</span> ${t.w9?'<span class="pill hi">🏦 CRITICAL PATH</span>':''} ${t.risk?'<span class="pill risk">⚠ RISK FLAGGED</span>':''} ${isOverdue(t)?'<span class="pill hi">OVERDUE</span>':''}
+  ${isSub?`<div style="margin-top:10px;background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12.5px">↳ Subtask of <a href="#" id="openparent" style="color:var(--green);font-weight:700">${esc(parentT?parentT.t:'(parent missing)')}</a></div>`:''}
   <div class="mfield" style="margin-top:10px"><label>Task title ✏️</label><input data-f="t" value="${esc(t.t)}" autocomplete="off" style="font-size:15px;font-weight:700;width:100%;padding:8px;border:1px solid var(--border);border-radius:7px"></div>
   <div class="mfield" style="margin-top:8px"><label>Description ✏️</label><textarea data-f="d" style="width:100%;min-height:52px;padding:8px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px">${esc(t.d||'')}</textarea></div>
   <div class="mgrid">
     <div class="mfield"><label>Status</label><select data-f="s">${Object.keys(STATUS).map(s=>`<option value="${s}" ${t.s===s?'selected':''}>${STATUS[s].label}</option>`).join('')}</select></div>
     <div class="mfield"><label>Due date</label><input type="date" data-f="due" value="${t.due.toISOString().slice(0,10)}"></div>
+    <div class="mfield"><label>Task type</label><select data-f="ttype">${TTYPES.map(v=>`<option ${t.ttype===v?'selected':''}>${v}</option>`).join('')}</select></div>
+    <div class="mfield"><label>Application/Tool</label><select data-f="app">${APPS.map(v=>`<option value="${v}" ${(t.app||'')===v?'selected':''}>${v||'—'}</option>`).join('')}</select></div>
     <div class="mfield"><label>Team Assigned</label><select data-f="team" id="m-team">${teamOptions(t.team)}</select></div>
     <div class="mfield"><label>Assignee</label><select data-f="as" id="m-as">${assigneeOptionsForTeam(t.team,t.as)}</select></div>
     <div class="mfield"><label>Priority</label><select data-f="pr">${['Urgent','High','Medium','Low'].map(p=>`<option ${t.pr===p?'selected':''}>${p}</option>`).join('')}</select></div>
@@ -786,11 +810,20 @@ function openTask(id){
     <div class="mfield"><label>Time spent</label><input type="number" data-f="spent" value="${t.spent}"></div>
   </div>
   ${t.deps.length?`<div class="msec"><h4>🔗 Dependencies (blockers)</h4>${t.deps.map(d=>`<span class="pill dep" style="margin:2px 4px 2px 0;display:inline-block">${esc(d)}</span>`).join('')}</div>`:''}
-  <div class="msec"><h4>☑️ Subtasks</h4>${(t.subtasks.length?t.subtasks:[['Define scope',0],['Implement',0],['Test & review',0]]).map((s,i)=>`<div class="subtask ${s[1]?'done':''}"><input type="checkbox" id="st${i}" data-st="${i}" ${s[1]?'checked':''}><label for="st${i}">${esc(s[0])}</label></div>`).join('')}</div>
+  <div class="msec"><h4>☑️ Checklist</h4>${(t.subtasks.length?t.subtasks:[['Define scope',0],['Implement',0],['Test & review',0]]).map((s,i)=>`<div class="subtask ${s[1]?'done':''}"><input type="checkbox" id="st${i}" data-st="${i}" ${s[1]?'checked':''}><label for="st${i}">${esc(s[0])}</label></div>`).join('')}</div>
+  ${!isSub?`<div class="msec"><h4>🧩 Subtasks (${kids.length})</h4>
+    ${kids.map(k=>`<div class="subtask"><input type="checkbox" class="kidchk" data-kid="${k.id}" title="Select for deletion"><label style="cursor:pointer;flex:1" data-openkid="${k.id}">${esc(k.t)}</label><span class="stbadge" style="background:${STATUS[k.s].col}">${STATUS[k.s].label}</span></div>`).join('')||'<div style="color:#999;font-size:12px">No subtasks yet.</div>'}
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn sec" id="addsub" style="font-size:12px">＋ Create New Subtask</button>
+      ${kids.length?'<button class="btn" id="delsubs" style="background:var(--pr-high);font-size:12px">🗑 Delete selected subtasks</button>':''}
+      ${!kids.length?'<button class="btn sec" id="tosub" style="font-size:12px">⤵ Change Task to Subtask</button>':''}
+    </div><div id="tosub-box"></div></div>`
+  :`<div class="msec"><h4>🧩 Parent assignment</h4>
+    <div class="mfield"><label>Assigned to parent (change or un-assign)</label><select id="parent-sel">${parentOptions(t)}</select></div></div>`}
   <div class="msec"><h4>📎 Attachments</h4>${t.attachments.map(a=>`<span class="attach">📄 ${esc(a)}</span>`).join('')||'<span style="color:#999;font-size:12px">None</span>'} <button class="btn sec" style="padding:4px 12px;font-size:11px;margin-left:6px" onclick="toast('Upload — connect Supabase storage')">+ Add</button></div>
   <div class="msec"><h4>💬 Comments</h4><div id="cthread">${commentsHTML(t)}</div>
   <div style="display:flex;gap:8px;margin-top:10px"><input id="newcomment" placeholder="Write a comment… use @Name to tag someone" autocomplete="off" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:7px"><button class="btn" id="addcbtn">Post</button></div></div>
-  <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn" id="deltaskbtn" style="background:var(--pr-high)">🗑 Delete task</button></div>`;
+  <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn" id="deltaskbtn" style="background:var(--pr-high)">🗑 Delete ${isSub?'subtask':'task'}</button></div>`;
   m.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{
     const f=el.dataset.f;let v=el.value;
     if(f==='due')v=new Date(v+'T12:00:00');
@@ -836,22 +869,62 @@ function openTask(id){
     saveAndReopen('Thread deleted 🗑⬆');
   });
   m.querySelector('#deltaskbtn').onclick=()=>{
-    m.innerHTML=`<div style="text-align:center;padding:26px 12px"><h3>Are you sure you want to delete task?</h3>
-    <p style="color:var(--muted);font-size:12.5px;margin:10px 0 20px">"${esc(t.t)}" will be permanently removed for the whole team.</p>
+    m.innerHTML=`<div style="text-align:center;padding:26px 12px"><h3>Are you sure you want to delete ${isSub?'subtask':'task'}?</h3>
+    <p style="color:var(--muted);font-size:12.5px;margin:10px 0 20px">"${esc(t.t)}" will be permanently removed for the whole team.${kids.length?' Its '+kids.length+' subtask(s) will become standalone tasks.':''}</p>
     <button class="btn" id="delyes" style="background:var(--pr-high);padding:9px 30px">Yes</button>
     <button class="btn sec" id="delno" style="margin-left:12px;padding:9px 30px">No</button></div>`;
-    m.querySelector('#delyes').onclick=async()=>{TASKS=TASKS.filter(x=>x.id!==t.id);await dbDeleteTask(t);closeModal();render();toast('Task deleted 🗑');};
+    m.querySelector('#delyes').onclick=async()=>{
+      TASKS.forEach(x=>{if(x.parent===t.id)x.parent=null;});
+      TASKS=TASKS.filter(x=>x.id!==t.id);
+      await dbDeleteTask(t);closeModal();render();toast((isSub?'Subtask':'Task')+' deleted 🗑');};
     m.querySelector('#delno').onclick=()=>openTask(id);
+  };
+  // --- subtask management ---
+  const op=m.querySelector('#openparent');if(op)op.onclick=e=>{e.preventDefault();openTask(t.parent);};
+  m.querySelectorAll('[data-openkid]').forEach(l=>l.onclick=()=>openTask(+l.dataset.openkid));
+  const ps=m.querySelector('#parent-sel');
+  if(ps)ps.onchange=()=>{
+    t.parent=ps.value?+ps.value:null;t.updated=new Date();dbSaveTask(t);render();
+    toast(t.parent?'Assigned to parent ✓':'Un-assigned — now a standalone task ✓');openTask(id);
+  };
+  const asb=m.querySelector('#addsub');
+  if(asb)asb.onclick=()=>newTask(t.s,null,t.id);
+  const tsb=m.querySelector('#tosub');
+  if(tsb)tsb.onclick=()=>{
+    m.querySelector('#tosub-box').innerHTML=`<div style="display:flex;gap:8px;margin-top:10px"><select id="tosub-sel" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px">${parentOptions(t)}</select><button class="btn" id="tosub-go" style="font-size:12px">Assign to parent</button></div>`;
+    m.querySelector('#tosub-go').onclick=()=>{
+      const v=m.querySelector('#tosub-sel').value;
+      if(!v){toast('Pick a parent task first');return;}
+      t.parent=+v;t.updated=new Date();dbSaveTask(t);render();toast('Converted to subtask ⤵');openTask(id);
+    };
+  };
+  const dsb=m.querySelector('#delsubs');
+  if(dsb)dsb.onclick=()=>{
+    const sel=[...m.querySelectorAll('.kidchk:checked')].map(c=>+c.dataset.kid);
+    if(!sel.length){toast('Tick the subtasks you want to delete first');return;}
+    m.innerHTML=`<div style="text-align:center;padding:26px 12px"><h3>Are you sure you want to delete?</h3>
+    <p style="color:var(--muted);font-size:12.5px;margin:10px 0 20px">${sel.length} subtask(s) will be permanently removed for the whole team.</p>
+    <button class="btn" id="ksyes" style="background:var(--pr-high);padding:9px 30px">Yes</button>
+    <button class="btn sec" id="ksno" style="margin-left:12px;padding:9px 30px">No</button></div>`;
+    m.querySelector('#ksyes').onclick=async()=>{
+      for(const kid of sel){const k=TASKS.find(x=>x.id===kid);TASKS=TASKS.filter(x=>x.id!==kid);if(k)await dbDeleteTask(k);}
+      render();toast(sel.length+' subtask(s) deleted 🗑');openTask(id);
+    };
+    m.querySelector('#ksno').onclick=()=>openTask(id);
   };
   $('#modal-ov').classList.add('open');
 }
 function closeModal(){$('#modal-ov').classList.remove('open');}
-function newTask(status,dueStr){
+function newTask(status,dueStr,parentId){
   const defDue=dueStr||new Date(TODAY.getTime()+7*864e5).toISOString().slice(0,10);
-  $('#modal').innerHTML=`<button class="close" onclick="closeModal()">✕</button><h3>➕ New task</h3>
+  const parentT=parentId?TASKS.find(x=>x.id===parentId):null;
+  $('#modal').innerHTML=`<button class="close" onclick="closeModal()">✕</button><h3>➕ New ${parentT?'subtask':'task'}</h3>
+  ${parentT?`<div style="margin-top:8px;background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12.5px">↳ Will be a subtask of <b>${esc(parentT.t)}</b></div>`:''}
   <div class="mfield" style="margin-top:12px"><label>Task name</label><input id="nt-title" placeholder="What needs doing?" autocomplete="off"></div>
   <div class="mgrid">
     <div class="mfield"><label>Phase</label><select id="nt-sub">${Object.keys(SUBPHASES).map(c=>`<option value="${c}">${c} — ${esc(SUBPHASES[c])}</option>`).join('')}<option value="">General / other</option></select></div>
+    <div class="mfield"><label>Task type</label><select id="nt-ttype">${TTYPES.map(v=>`<option>${v}</option>`).join('')}</select></div>
+    <div class="mfield"><label>Application/Tool</label><select id="nt-app">${APPS.map(v=>`<option value="${v}">${v||'—'}</option>`).join('')}</select></div>
     <div class="mfield"><label>Status</label><select id="nt-status">${Object.keys(STATUS).map(s=>`<option value="${s}" ${s===(status||'todo')?'selected':''}>${STATUS[s].label}</option>`).join('')}</select></div>
     <div class="mfield"><label>Due date</label><input type="date" id="nt-due" value="${defDue}"></div>
     <div class="mfield"><label>Priority</label><select id="nt-pr"><option>Urgent</option><option>High</option><option selected>Medium</option><option>Low</option></select></div>
@@ -869,9 +942,11 @@ function newTask(status,dueStr){
     if(!title){toast('Give the task a name ✍️');$('#nt-title').focus();return;}
     const sub=$('#nt-sub').value||null;
     addTask({t:title,s:$('#nt-status').value,sub,ph:sub==='1J'?2:1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
+      ttype:$('#nt-ttype').value,app:$('#nt-app').value||'',parent:parentId||null,
       due:new Date($('#nt-due').value+'T12:00:00'),d:$('#nt-desc').value.trim(),w9:!!$('#nt-crit').value});
     dbInsertTask(TASKS[TASKS.length-1]);
-    closeModal();render();toast('Task created ✓');
+    if(parentId){render();openTask(parentId);}else{closeModal();render();}
+    toast((parentId?'Subtask':'Task')+' created ✓');
   };
 }
 
@@ -1274,10 +1349,10 @@ function renderAssigneeFilter(){
   wireFilters();
 }
 
-function toRow(t){return {title:t.t,description:t.d,status:t.s,phase:t.ph,priority:t.pr,assignee:t.as,team:t.team||null,subphase:t.sub||null,
+function toRow(t){return {title:t.t,description:t.d,status:t.s,phase:t.ph,priority:t.pr,assignee:t.as,team:t.team||null,task_type:t.ttype||'Task',parent_id:t.parent||null,app_tool:t.app||null,subphase:t.sub||null,
   due:t.due.toISOString().slice(0,10),progress:t.prog,est:t.est,spent:t.spent,risk:t.risk,w9:t.w9,
   deps:t.deps,subtasks:t.subtasks,comments:t.comments,attachments:t.attachments,reviewers:t.reviewers||null};}
-function fromRow(r){return {id:r.id,t:r.title,d:r.description||'',s:r.status,ph:r.phase,pr:r.priority,as:r.assignee,team:r.team||'',sub:r.subphase||null,
+function fromRow(r){return {id:r.id,t:r.title,d:r.description||'',s:r.status,ph:r.phase,pr:r.priority,as:r.assignee,team:r.team||'',ttype:r.task_type||'Task',parent:r.parent_id||null,app:r.app_tool||'',sub:r.subphase||null,
   due:new Date(r.due+'T12:00:00'),prog:r.progress||0,est:r.est||8,spent:r.spent||0,risk:!!r.risk,w9:!!r.w9,
   deps:r.deps||[],subtasks:r.subtasks||[],comments:normComments(r.comments||[]),attachments:r.attachments||[],
   reviewers:r.reviewers||undefined,updated:new Date(r.updated_at||r.created_at)};}
