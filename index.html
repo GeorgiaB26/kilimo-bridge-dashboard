@@ -138,6 +138,9 @@ main .collapse-btn{display:block}
 .pill.ph1{background:#ecebfb;color:#5a4f9e}
 .pill.ph2{background:#fdeaf4;color:#c2417a}
 .pill.ur{background:#000;color:#fff}
+.pbarwrap{position:relative;height:16px;background:#eef1ef;border-radius:9px;overflow:hidden;min-width:76px;border:1px solid var(--border)}
+.pbarfill{height:100%;border-radius:9px 0 0 9px;transition:width .45s ease}
+.pbartxt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#33413b;letter-spacing:.2px}
 .pill.tt-task{background:#eef1ef;color:#456055}
 .pill.tt-feat{background:#e3f2fd;color:#1565c0}
 .pill.tt-cr{background:#fff3e0;color:#e65100}
@@ -353,6 +356,7 @@ svg text{font-family:inherit}
     <div class="rb-sec"><h4>Status</h4>
       <label class="chk"><input type="checkbox" name="fstatus" value="all" checked> All Statuses</label>
       <label class="chk"><input type="checkbox" name="fstatus" value="todo"> Not Started</label>
+      <label class="chk"><input type="checkbox" name="fstatus" value="paused"> Paused</label>
       <label class="chk"><input type="checkbox" name="fstatus" value="prog"> In Progress</label>
       <label class="chk"><input type="checkbox" name="fstatus" value="review"> In Review</label>
       <label class="chk"><input type="checkbox" name="fstatus" value="tech"> Tech Testing</label>
@@ -430,6 +434,7 @@ const DAYS_TO_BANK = Math.max(0,Math.ceil((BANK_MEETING-TODAY)/864e5));
 const CUR_WEEK = Math.max(1,Math.min(20,Math.floor((TODAY-WEEK1)/6048e5)+1));
 const STATUS = {
   todo:{label:'Not Started',color:'#e07b39',col:'#d35f2f'},
+  paused:{label:'Paused',color:'#8d6e63',col:'#6d4c41'},
   prog:{label:'In Progress',color:'#2196f3',col:'#1976d2'},
   review:{label:'In Review',color:'#f9a825',col:'#f0a020'},
   tech:{label:'Tech Testing',color:'#7e57c2',col:'#5e35b1'},
@@ -437,6 +442,12 @@ const STATUS = {
   ready:{label:'Ready for Deployment',color:'#546e7a',col:'#37474f'},
   done:{label:'Completed',color:'#4caf50',col:'#3d9142'}};
 const PRIO = {Urgent:'ur',High:'hi',Medium:'me',Low:'lo'};
+// auto progress % by status (Paused keeps whatever it was on)
+const STATUS_PROGRESS = {todo:0,prog:25,review:35,tech:50,uat:60,ready:75,done:100};
+function applyStatusProgress(t){ if(STATUS_PROGRESS[t.s]!=null) t.prog=STATUS_PROGRESS[t.s]; return t.prog; }
+function progressBar(pct,w){pct=Math.max(0,Math.min(100,+pct||0));
+  const col=pct>=100?'#2e7d32':pct>=75?'#43a047':pct>=50?'#66bb6a':pct>=25?'#9ccc65':'#cfd8cd';
+  return `<div class="pbarwrap" style="${w?'width:'+w+';':''}"><div class="pbarfill" style="width:${pct}%;background:${col}"></div><span class="pbartxt">${pct}%</span></div>`;}
 const PRIO_ORDER = {Urgent:0,High:1,Medium:2,Low:3};
 const TEAM_ASSIGNEES = {
   '':['Unassigned'],
@@ -634,7 +645,7 @@ function cardHTML(t){
       ${state.tgl.est?`<span class="due">⏱ ${t.spent}/${t.est}h</span>`:''}
       <span class="mini-av ${t.as==='Unassigned'?'un':''}" title="${esc(t.as)}">${t.as==='Unassigned'?'–':initialsOf(t.as)}</span>
     </div>
-    ${t.s==='prog'&&t.prog?`<div class="tprog" title="${t.prog}%"><i style="width:${t.prog}%"></i></div>`:''}
+    <div style="margin-top:7px">${progressBar(t.prog)}</div>
     ${t.s==='review'?`<div class="trow" style="margin-top:6px"><span class="due">Reviewers: ${esc(t.reviewers||'Georgia')} ✅</span></div>`:''}
   </div>`;
 }
@@ -753,7 +764,7 @@ function renderTasks(){
     <td><span class="stbadge" style="background:${STATUS[t.s].col}">${STATUS[t.s].label}</span></td>
     <td><span class="pill ${PRIO[t.pr]}">${t.pr}</span></td>
     <td class="${isOverdue(t)?'due late':''}">${fmtD(t.due)}</td><td>${esc(t.as)}</td>
-    <td>${t.prog}%</td><td>${t.spent}/${t.est}h</td></tr>`).join('')+`</tbody></table>`;
+    <td>${progressBar(t.prog)}</td><td>${t.spent}/${t.est}h</td></tr>`).join('')+`</tbody></table>`;
   $$('#main tbody tr[data-id]').forEach(r=>r.onclick=()=>openTask(+r.dataset.id));
   $$('#main th[data-sort]').forEach(th=>th.onclick=()=>{
     const c=th.dataset.sort;
@@ -801,6 +812,7 @@ function openTask(id){
   <div class="mgrid">
     <div class="mfield"><label>Status</label><select data-f="s">${Object.keys(STATUS).map(s=>`<option value="${s}" ${t.s===s?'selected':''}>${STATUS[s].label}</option>`).join('')}</select></div>
     <div class="mfield"><label>Due date</label><input type="date" data-f="due" value="${t.due.toISOString().slice(0,10)}"></div>
+    <div class="mfield"><label>Phase</label><select data-f="sub">${Object.keys(SUBPHASES).map(c=>`<option value="${c}" ${t.sub===c?'selected':''}>${c} — ${esc(SUBPHASES[c])}</option>`).join('')}<option value="" ${!t.sub?'selected':''}>General / other</option></select></div>
     <div class="mfield"><label>Task type</label><select data-f="ttype">${TTYPES.map(v=>`<option ${t.ttype===v?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="mfield"><label>Application/Tool</label><select data-f="app">${APPS.map(v=>`<option value="${v}" ${(t.app||'')===v?'selected':''}>${v||'—'}</option>`).join('')}</select></div>
     <div class="mfield"><label>Team Assigned</label><select data-f="team" id="m-team">${teamOptions(t.team)}</select></div>
@@ -809,6 +821,9 @@ function openTask(id){
     <div class="mfield"><label>Estimated hours</label><input type="number" data-f="est" value="${t.est}"></div>
     <div class="mfield"><label>Time spent</label><input type="number" data-f="spent" value="${t.spent}"></div>
   </div>
+  <div class="mfield" style="margin-top:-4px"><label>Progress — set automatically by status, or override</label>
+    <div style="display:flex;align-items:center;gap:10px">${progressBar(t.prog)}
+    <input type="range" min="0" max="100" step="5" data-f="prog" value="${t.prog}" style="flex:1;accent-color:var(--green)"></div></div>
   ${t.deps.length?`<div class="msec"><h4>🔗 Dependencies (blockers)</h4>${t.deps.map(d=>`<span class="pill dep" style="margin:2px 4px 2px 0;display:inline-block">${esc(d)}</span>`).join('')}</div>`:''}
   <div class="msec"><h4>☑️ Checklist</h4>${(t.subtasks.length?t.subtasks:[['Define scope',0],['Implement',0],['Test & review',0]]).map((s,i)=>`<div class="subtask ${s[1]?'done':''}"><input type="checkbox" id="st${i}" data-st="${i}" ${s[1]?'checked':''}><label for="st${i}">${esc(s[0])}</label></div>`).join('')}</div>
   ${!isSub?`<div class="msec"><h4>🧩 Subtasks (${kids.length})</h4>
@@ -827,9 +842,12 @@ function openTask(id){
   m.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{
     const f=el.dataset.f;let v=el.value;
     if(f==='due')v=new Date(v+'T12:00:00');
-    if(f==='est'||f==='spent')v=+v;
+    if(f==='est'||f==='spent'||f==='prog')v=+v;
     if(f==='t'&&!v.trim()){el.value=t.t;return;}
+    if(f==='sub')v=v||null;
     t[f]=v;t.updated=new Date();
+    if(f==='sub')t.ph=v==='1J'?2:1;                    // phase move keeps board grouping right
+    if(f==='s'){applyStatusProgress(t);openTask(id);}   // status change auto-sets progress %
     if(f==='team'){ // re-map assignee list to the chosen team
       const allowed=TEAM_ASSIGNEES[v||'']||['Unassigned'];
       if(!allowed.includes(t.as))t.as='Unassigned';
@@ -945,6 +963,7 @@ function newTask(status,dueStr,parentId){
     addTask({t:title,s:$('#nt-status').value,sub,ph:sub==='1J'?2:1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
       ttype:$('#nt-ttype').value,app:$('#nt-app').value||'',parent:parentId||null,
       due:new Date($('#nt-due').value+'T12:00:00'),d:$('#nt-desc').value.trim(),w9:!!$('#nt-crit').value});
+    applyStatusProgress(TASKS[TASKS.length-1]);
     dbInsertTask(TASKS[TASKS.length-1]);
     if(parentId){render();openTask(parentId);}else{closeModal();render();}
     toast((parentId?'Subtask':'Task')+' created ✓');
@@ -963,7 +982,7 @@ function wireBoard(){
     col.ondragleave=()=>col.classList.remove('dragover');
     col.ondrop=e=>{e.preventDefault();col.classList.remove('dragover');
       const id=+e.dataTransfer.getData('text/plain');const t=TASKS.find(x=>x.id===id);
-      if(t&&t.s!==col.dataset.col){t.s=col.dataset.col;t.updated=new Date();if(t.s==='done')t.prog=100;dbSaveTask(t);render();toast(`Moved to ${STATUS[col.dataset.col].label} ✓`);}}
+      if(t&&t.s!==col.dataset.col){t.s=col.dataset.col;t.updated=new Date();applyStatusProgress(t);dbSaveTask(t);render();toast(`Moved to ${STATUS[col.dataset.col].label} ✓ (${t.prog}%)`);}}
   });
   $$('.addtask').forEach(b=>b.onclick=()=>newTask(b.dataset.add));
   $$('[data-ss]').forEach(b=>b.onclick=()=>{state.savedSearch=state.savedSearch===b.dataset.ss?null:b.dataset.ss;render();});
