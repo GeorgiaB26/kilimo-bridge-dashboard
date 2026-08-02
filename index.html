@@ -870,13 +870,14 @@ function openTask(id){
   });
   m.querySelector('#deltaskbtn').onclick=()=>{
     m.innerHTML=`<div style="text-align:center;padding:26px 12px"><h3>Are you sure you want to delete ${isSub?'subtask':'task'}?</h3>
-    <p style="color:var(--muted);font-size:12.5px;margin:10px 0 20px">"${esc(t.t)}" will be permanently removed for the whole team.${kids.length?' Its '+kids.length+' subtask(s) will become standalone tasks.':''}</p>
+    <p style="color:var(--muted);font-size:12.5px;margin:10px 0 20px">"${esc(t.t)}" will be permanently removed for the whole team.${kids.length?' Its '+kids.length+' subtask(s) will be deleted with it.':''}</p>
     <button class="btn" id="delyes" style="background:var(--pr-high);padding:9px 30px">Yes</button>
     <button class="btn sec" id="delno" style="margin-left:12px;padding:9px 30px">No</button></div>`;
     m.querySelector('#delyes').onclick=async()=>{
-      TASKS.forEach(x=>{if(x.parent===t.id)x.parent=null;});
-      TASKS=TASKS.filter(x=>x.id!==t.id);
-      await dbDeleteTask(t);closeModal();render();toast((isSub?'Subtask':'Task')+' deleted 🗑');};
+      const kidIds=kids.map(k=>k.id);
+      TASKS=TASKS.filter(x=>x.id!==t.id&&!kidIds.includes(x.id));
+      await dbDeleteTask(t); // DB cascade removes its subtasks too
+      closeModal();render();toast((isSub?'Subtask':'Task')+' deleted 🗑'+(kidIds.length?' (+'+kidIds.length+' subtasks)':''));};
     m.querySelector('#delno').onclick=()=>openTask(id);
   };
   // --- subtask management ---
