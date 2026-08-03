@@ -651,9 +651,9 @@ function cardHTML(t){
 }
 
 /* ================= DASHBOARD ================= */
-const METRICS={farmers:23,users:27,pending_kes:90000,agents:1,projects:9,byCountry:{},updatedAt:null,live:false};
+const METRICS={farmers:0,users:0,pending_kes:0,agents:0,projects:0,byCountry:{},updatedAt:null,live:false,src:''};
 const nfmt=n=>(+n).toLocaleString('en-US');
-function liveTag(){return METRICS.live?' · <span style="color:var(--st-done);font-weight:700">● live</span>':'';}
+function liveTag(){return METRICS.live?` · <span style="color:var(--st-done);font-weight:700" title="Source: ${esc(METRICS.src||'platform')}">● live</span>`:' · <span style="color:var(--muted)">connecting…</span>';}
 function groupStats(f){const g=TASKS.filter(f);const d=g.filter(t=>t.s==='done').length,p=g.filter(t=>t.s!=='todo'&&t.s!=='done').length;
   return {n:g.length,d,p,todo:g.filter(t=>t.s==='todo').length,pct:g.length?Math.round(d/g.length*100):0};}
 function metricsHTML(){
@@ -1324,10 +1324,33 @@ const DB = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
    METRICS_URL: the hosted API, e.g. 'https://kilimo-api.onrender.com/api/metrics/live'
                 (http://localhost:3001/api/metrics/live only works when testing locally)
    METRICS_KEY: must match TRACKER_API_KEY in the backend/.env */
-const METRICS_URL = '/api/metrics/live'; // proxied by Netlify to kilimo-bridge-mobile.onrender.com (see _redirects) — avoids CORS
-const METRICS_KEY = ''; // set when TRACKER_API_KEY is configured on Render
+/* Primary source = the Kilimo Bridge App Supabase (same DB the Loveable admin portal
+   and the farmer/agent/banking apps use). Legacy Render API kept as a fallback only. */
+const PLATFORM_URL = 'https://tzaipijebibisgkwrdnz.supabase.co';
+const PLATFORM_KEY = 'sb_publishable_fOrJNnmMt2KKaBWJpvx9sA_dSHQmg-w';
+const PLATFORM_LABEL = 'Kilimo Bridge App · Supabase';
+const PDB = (PLATFORM_URL && PLATFORM_KEY && window.supabase)
+  ? window.supabase.createClient(PLATFORM_URL, PLATFORM_KEY) : null;
+const METRICS_URL = ''; // legacy Render API (old SQLite data) — set to '/api/metrics/live' to switch back
+const METRICS_KEY = '';
 /* ▲▲ ------------------------------------------------------- ▲▲ */
 async function fetchPlatformMetrics(){
+  if(PDB){
+    const {data,error}=await PDB.rpc('dashboard_metrics');
+    if(!error&&data){
+      Object.assign(METRICS,{
+        farmers:data.totalFarmers??METRICS.farmers,
+        users:data.totalUsers??METRICS.users,
+        pending_kes:data.pendingPaymentsTotal??METRICS.pending_kes,
+        agents:data.activeAgents??METRICS.agents,
+        projects:data.activeProjects??METRICS.projects,
+        byCountry:data.farmersByCountry||METRICS.byCountry,
+        updatedAt:data.updatedAt,live:true,src:PLATFORM_LABEL});
+      if(state.view==='dashboard'||state.view==='reports')render();
+      return;
+    }
+    console.warn('platform metrics (supabase):',error&&error.message);
+  }
   if(!METRICS_URL) return;
   try{
     const r=await fetch(METRICS_URL,{headers:METRICS_KEY?{'X-Tracker-Key':METRICS_KEY}:{}});
@@ -1340,7 +1363,7 @@ async function fetchPlatformMetrics(){
       agents:   d.activeAgents        ?? METRICS.agents,
       projects: d.activeProjects      ?? METRICS.projects,
       byCountry:d.farmersByCountry    || METRICS.byCountry,
-      updatedAt:d.updatedAt, live:true});
+      updatedAt:d.updatedAt, live:true, src:'Render API (legacy)'});
     if(state.view==='dashboard'||state.view==='reports')render();
   }catch(e){console.warn('platform metrics unavailable:',e.message);}
 }
