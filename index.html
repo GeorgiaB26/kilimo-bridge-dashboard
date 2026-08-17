@@ -349,8 +349,8 @@ svg text{font-family:inherit}
   <aside id="rightbar">
     <div class="rb-sec"><h4>Filters — Phase</h4>
       <label class="chk"><input type="checkbox" name="fphase" value="all" checked> All Phases</label>
-      <label class="chk"><input type="checkbox" name="fphase" value="1"> 📱 App build (1A–1I)</label>
-      <label class="chk"><input type="checkbox" name="fphase" value="2"> 🖥️ Admin portal (1J)</label>
+      <label class="chk"><input type="checkbox" name="fphase" value="1"> 📱 Phase 1 App Build</label>
+      <label class="chk"><input type="checkbox" name="fphase" value="2"> 🚀 Phase 2 Post-Roll Out</label>
       <label class="chk"><input type="checkbox" name="fphase" value="w9"> 🏦 Critical Path</label>
     </div>
     <div class="rb-sec"><h4>Status</h4>
@@ -486,12 +486,14 @@ const SUBPHASES={
  '1A':'Farmer Registration & Profile','1B':'Farmer App — Projects & Tasks','1C':'Field Agent App — Farmer Management',
  '1D':'Banking App — Payment Processing','1E':'Database & Sync Architecture','1F':'Error Handling & Logging',
  '1G':'Security & Permissions','1H':'Testing & QA','1I':'Critical Bug Fixes','1J':'Admin Portal — Loveable'};
+const PHASE_NAMES={1:'Phase 1 App Build',2:'Phase 2 Post-Roll Out Updates'};
+const PHASE_OF_SUB=s=>1; // every 1A–1J section belongs to Phase 1 App Build (incl. 1J)
 const DUE={'1A':'2026-08-03','1B':'2026-08-07','1C':'2026-08-07','1D':'2026-08-03','1E':'2026-08-08','1F':'2026-08-10','1G':'2026-08-11','1H':'2026-08-13','1I':'2026-08-05','1J':'2026-08-14'};
 let _j=0;
 function T(sub,t,d,opt){opt=opt||{};
   let due=opt.due||(opt.crit?'2026-08-03':DUE[sub]);
   if(sub==='1J'&&!opt.due&&!opt.crit)due='2026-08-'+String(10+(_j++%9)).padStart(2,'0');
-  addTask({t,d,sub,ph:sub==='1J'?2:1,s:opt.s||'prog',pr:opt.crit?'High':(opt.pr||'Medium'),
+  addTask({t,d,sub,ph:1,s:opt.s||'prog',pr:opt.crit?'High':(opt.pr||'Medium'),
     as:opt.as||(sub==='1J'?'Loveable':'Cursor'),due,w9:!!opt.crit,risk:!!opt.risk,
     prog:opt.s==='done'?100:0,est:opt.est||8,spent:opt.s==='done'?8:3});}
 // PHASE 1A — Farmer Registration & Profile (5)
@@ -597,7 +599,7 @@ const NOTIFS=[
 const state={view:'dashboard',search:'',sort:'due',
   f:{phase:new Set(['all']),status:new Set(['all']),prio:new Set(['all']),assn:new Set(['all'])},
   tgl:{blocked:true,deps:true,est:false,risk:true},
-  calY:2026,calM:Math.min(11,Math.max(6,TODAY.getMonth())),savedSearch:null,tblSort:null,tblF:{}};
+  calY:2026,calM:Math.min(11,Math.max(6,TODAY.getMonth())),savedSearch:null,tblSort:null,tblF:{},sel:new Set(),crit:{}};
 let _stored=null;try{_stored=JSON.parse(localStorage.getItem('kb_notes')||'null');}catch(e){}
 let notes=_stored||[
  {id:1,tag:'idea',txt:'Voice-note listings for farmers with low literacy — WhatsApp bot integration?',date:'2026-07-10',pin:true,arch:false},
@@ -666,15 +668,17 @@ function metricsHTML(){
     <div class="metric"><div class="mi" style="background:#fdecea">🏦</div><div><b>${DAYS_TO_BANK} days</b><span>Until bank meeting — Aug 4</span></div></div>
   </div>`;
 }
+function goToPhase(ph,sub){state.tblF={};if(ph)state.tblF.phase=String(ph);if(sub)state.tblF.sub=sub;setView('tasks');
+  toast('Showing '+(sub?sub+' — '+SUBPHASES[sub]:PHASE_NAMES[ph]));}
 function phaseCardsHTML(big){
-  const app=groupStats(t=>t.ph===1), adm=groupStats(t=>t.ph===2), crit=groupStats(t=>t.w9);
+  const app=groupStats(t=>t.ph===1), p2=groupStats(t=>t.ph===2), crit=groupStats(t=>t.w9);
   return `<div class="phase-row" ${big?'style="flex-wrap:wrap"':''}>
-    <div class="pcard g1"><span class="ptag">Active · Cursor building</span><h3>📱 Phase 1 App Build <small style="font-weight:400">(1A–1I · ${app.n} tasks)</small></h3>
-      <div class="pbar"><i style="width:${app.pct}%"></i></div><p><b>${app.pct}%</b> · Farmer app, Field Agent app, Banking app, DB & sync, security, QA, bug fixes</p>
+    <div class="pcard g1" style="cursor:pointer" onclick="goToPhase(1)" title="Click to see all Phase 1 tasks"><span class="ptag">Active · click to open tasks →</span><h3>📱 Phase 1 App Build <small style="font-weight:400">(1A–1J · ${app.n} tasks)</small></h3>
+      <div class="pbar"><i style="width:${app.pct}%"></i></div><p><b>${app.pct}%</b> · Farmer app, Field Agent app, Banking app, DB & sync, security, QA, bug fixes, admin portal</p>
       <div class="stats"><span>${app.d} Done ✅</span><span>${app.p} In Progress 🔄</span><span>${app.todo} Not Started ⏸️</span></div></div>
-    <div class="pcard g2"><span class="ptag">Active · Loveable building</span><h3>🖥️ Admin Portal Migration <small style="font-weight:400">(1J · ${adm.n} tasks)</small></h3>
-      <div class="pbar"><i style="width:${adm.pct}%"></i></div><p><b>${adm.pct}%</b> · New admin UI in Loveable — connects to NEW Supabase once the app build is done. Old admin platform untouched until migration completes.</p>
-      <div class="stats"><span>${adm.d} Done ✅</span><span>${adm.p} In Progress 🔄</span></div></div>
+    <div class="pcard g2" style="cursor:pointer" onclick="goToPhase(2)" title="Click to see all Phase 2 tasks"><span class="ptag">Post roll-out · click to open tasks →</span><h3>🚀 Phase 2 Post-Roll Out Updates <small style="font-weight:400">(${p2.n} tasks)</small></h3>
+      <div class="pbar"><i style="width:${p2.pct}%"></i></div><p><b>${p2.pct}%</b> · Change requests and enhancements raised after go-live.</p>
+      <div class="stats"><span>${p2.d} Done ✅</span><span>${p2.p} In Progress 🔄</span><span>${p2.todo} Not Started ⏸️</span></div></div>
     <div class="pcard g3"><span class="ptag">${DAYS_TO_BANK} days away · Make or Break</span><h3>🏦 Bank Meeting — Aug 4</h3>
       <p>Must work on the day: farmer registrations, task submission, field-agent verification, payment processing, admin approvals.</p>
       <div class="stats"><span>${crit.d}/${crit.n} critical-path tasks done</span><span>⚠ Filter: 🏦 Critical Path</span></div></div>
@@ -727,6 +731,7 @@ function renderTasks(){
   if(f.scope==='parent')list=list.filter(t=>!t.parent);
   if(f.scope==='sub')list=list.filter(t=>!!t.parent);
   if(f.team)list=list.filter(t=>(t.team||'')===f.team);
+  if(f.phase)list=list.filter(t=>String(t.ph)===String(f.phase));
   if(f.sub)list=list.filter(t=>(t.sub||'')===f.sub);
   if(f.status)list=list.filter(t=>t.s===f.status);
   if(f.pr)list=list.filter(t=>t.pr===f.pr);
@@ -741,22 +746,33 @@ function renderTasks(){
   }
   const arrow=c=>S&&S.col===c?(S.dir>0?' ▲':' ▼'):'';
   const cols=[['task','Task'],['ttype','Task Type'],['team','Team'],['phase','Phase'],['status','Status'],['pr','Priority'],['due','Due'],['as','Assignee'],['prog','Progress'],['est','Est.']];
+  const selN=state.sel.size;
+  const bulkBar=selN?`<div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:10px;border-color:var(--green)">
+    <b style="font-size:13px">${selN} selected</b>
+    <select id="bulk-status" style="padding:6px;border:1px solid var(--border);border-radius:7px"><option value="">Set status…</option>${Object.keys(STATUS).map(s=>`<option value="${s}">${STATUS[s].label}</option>`).join('')}</select>
+    <select id="bulk-as" style="padding:6px;border:1px solid var(--border);border-radius:7px"><option value="">Set assignee…</option>${[...new Set(['Unassigned',...memberNames(),...taskAssignees(),'Product Team','Banking Team'])].map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+    <button class="btn sec" id="bulk-dup" style="font-size:12px">⧉ Duplicate</button>
+    <button class="btn" id="bulk-del" style="background:var(--pr-high);font-size:12px">🗑 Delete</button>
+    <button class="btn sec" id="bulk-clear" style="font-size:12px;margin-left:auto">Clear selection</button></div>`:'';
   const asOpts=[...new Set([...memberNames(),...taskAssignees(),'Product Team','Banking Team','Unassigned'])];
   $('#main').innerHTML=`<div class="sec-title">📋 All Tasks <span class="sub">${list.length} of ${TASKS.length} shown${list.length===0?' — <a href="#" onclick="state.search=\'\';document.getElementById(\'searchbox\').value=\'\';state.savedSearch=null;state.tblF={};render();return false" style="color:var(--accent)">clear search & filters</a>':''}</span></div>`+savedSearchHTML()+
-  `<table class="tasktbl"><thead><tr>${cols.map(c=>`<th data-sort="${c[0]}" title="Click to sort">${c[1]}${arrow(c[0])}</th>`).join('')}</tr>
-   <tr class="tblf">
+  bulkBar+
+  `<table class="tasktbl"><thead><tr><th style="width:30px"><input type="checkbox" id="selall" title="Select all shown"></th>${cols.map(c=>`<th data-sort="${c[0]}" title="Click to sort">${c[1]}${arrow(c[0])}</th>`).join('')}</tr>
+   <tr class="tblf"><th></th>
      <th><input data-tf="task" value="${esc(f.task||'')}" placeholder="filter…"></th>
      <th><select data-tf="ttype" style="margin-bottom:3px"><option value="">All types</option>${TTYPES.map(v=>`<option ${f.ttype===v?'selected':''}>${v}</option>`).join('')}</select>
          <select data-tf="scope"><option value="">Parents + subtasks</option><option value="parent" ${f.scope==='parent'?'selected':''}>Parents only</option><option value="sub" ${f.scope==='sub'?'selected':''}>Subtasks only</option></select></th>
      <th><select data-tf="team"><option value="">All</option>${['Product Team','SLT','Equity Bank'].map(v=>`<option ${f.team===v?'selected':''}>${v}</option>`).join('')}</select></th>
-     <th><select data-tf="sub"><option value="">All</option>${Object.keys(SUBPHASES).map(v=>`<option ${f.sub===v?'selected':''}>${v}</option>`).join('')}</select></th>
+     <th><select data-tf="phase" style="margin-bottom:3px"><option value="">All phases</option><option value="1" ${f.phase==='1'?'selected':''}>Phase 1 App Build</option><option value="2" ${f.phase==='2'?'selected':''}>Phase 2 Post-Roll Out</option></select>
+         <select data-tf="sub"><option value="">All sections</option>${Object.keys(SUBPHASES).map(v=>`<option ${f.sub===v?'selected':''}>${v} — ${esc(SUBPHASES[v])}</option>`).join('')}</select></th>
      <th><select data-tf="status"><option value="">All</option>${Object.keys(STATUS).map(v=>`<option value="${v}" ${f.status===v?'selected':''}>${STATUS[v].label}</option>`).join('')}</select></th>
      <th><select data-tf="pr"><option value="">All</option>${['Urgent','High','Medium','Low'].map(v=>`<option ${f.pr===v?'selected':''}>${v}</option>`).join('')}</select></th>
      <th><input data-tf="due" value="${esc(f.due||'')}" placeholder="e.g. Aug 4"></th>
      <th><select data-tf="as"><option value="">All</option>${asOpts.map(v=>`<option ${f.as===v?'selected':''}>${esc(v)}</option>`).join('')}</select></th>
      <th></th><th></th>
    </tr></thead><tbody>`+
-  list.map(t=>`<tr data-id="${t.id}">
+  list.map(t=>`<tr data-id="${t.id}" ${state.sel.has(t.id)?'style="background:var(--green-light)"':''}>
+    <td><input type="checkbox" class="rowchk" data-sel="${t.id}" ${state.sel.has(t.id)?'checked':''}></td>
     <td>${t.parent?'<span style="color:var(--muted)">↳</span> ':''}<b>${esc(t.t)}</b>${t.risk?' <span class="pill risk">⚠</span>':''}${t.deps.length?' <span class="pill dep">🔗</span>':''}${childTasks(t).length?` <span class="pill dep">🧩 ${childTasks(t).length}</span>`:''}</td>
     <td>${ttypePill(t)}${t.parent?' <span class="pill dep">SUB</span>':''}</td>
     <td>${t.team?esc(t.team):'<span style="color:#aaa">—</span>'}</td>
@@ -765,7 +781,41 @@ function renderTasks(){
     <td><span class="pill ${PRIO[t.pr]}">${t.pr}</span></td>
     <td class="${isOverdue(t)?'due late':''}">${fmtD(t.due)}</td><td>${esc(t.as)}</td>
     <td>${progressBar(t.prog)}</td><td>${t.spent}/${t.est}h</td></tr>`).join('')+`</tbody></table>`;
-  $$('#main tbody tr[data-id]').forEach(r=>r.onclick=()=>openTask(+r.dataset.id));
+  $$('#main tbody tr[data-id]').forEach(r=>r.onclick=e=>{if(e.target.closest('.rowchk'))return;openTask(+r.dataset.id);});
+  // --- bulk selection ---
+  $$('#main .rowchk').forEach(c=>c.onclick=e=>{e.stopPropagation();
+    const id=+c.dataset.sel; c.checked?state.sel.add(id):state.sel.delete(id); render();});
+  const sa=$('#selall');
+  if(sa){sa.checked=list.length>0&&list.every(t=>state.sel.has(t.id));
+    sa.onclick=e=>{e.stopPropagation(); if(sa.checked)list.forEach(t=>state.sel.add(t.id)); else list.forEach(t=>state.sel.delete(t.id)); render();};}
+  const ids=()=>[...state.sel];
+  const bs=$('#bulk-status'); if(bs)bs.onchange=async()=>{
+    const v=bs.value;if(!v)return;
+    for(const id of ids()){const t=TASKS.find(x=>x.id===id);if(t){t.s=v;applyStatusProgress(t);t.updated=new Date();await dbSaveTask(t);} }
+    toast(ids().length+' tasks set to '+STATUS[v].label+' ✓');state.sel.clear();render();};
+  const ba=$('#bulk-as'); if(ba)ba.onchange=async()=>{
+    const v=ba.value;if(!v)return;
+    for(const id of ids()){const t=TASKS.find(x=>x.id===id);if(t){t.as=v;t.updated=new Date();await dbSaveTask(t);} }
+    toast(ids().length+' tasks assigned to '+v+' ✓');state.sel.clear();render();};
+  const bd=$('#bulk-dup'); if(bd)bd.onclick=async()=>{
+    const src=ids().map(id=>TASKS.find(x=>x.id===id)).filter(Boolean);
+    for(const t of src){
+      addTask(Object.assign({},t,{id:undefined,t:t.t+' (copy)',parent:t.parent,comments:[],due:new Date(t.due)}));
+      const n=TASKS[TASKS.length-1];n.id=++_id;await dbInsertTask(n);}
+    toast(src.length+' task(s) duplicated ⧉');state.sel.clear();render();};
+  const bdel=$('#bulk-del'); if(bdel)bdel.onclick=()=>{
+    const n=state.sel.size;
+    $('#modal').innerHTML=`<div style="text-align:center;padding:26px 12px"><h3>Are you sure you want to delete?</h3>
+      <p style="color:var(--muted);font-size:12.5px;margin:10px 0 20px">${n} task(s) will be permanently removed for the whole team. Any subtasks will be deleted with them.</p>
+      <button class="btn" id="byes" style="background:var(--pr-high);padding:9px 30px">Yes</button>
+      <button class="btn sec" id="bno" style="margin-left:12px;padding:9px 30px">No</button></div>`;
+    $('#modal-ov').classList.add('open');
+    $('#byes').onclick=async()=>{
+      for(const id of ids()){const t=TASKS.find(x=>x.id===id);
+        TASKS=TASKS.filter(x=>x.id!==id&&x.parent!==id); if(t)await dbDeleteTask(t);}
+      state.sel.clear();closeModal();render();toast(n+' task(s) deleted 🗑');};
+    $('#bno').onclick=()=>{closeModal();};};
+  const bc=$('#bulk-clear'); if(bc)bc.onclick=()=>{state.sel.clear();render();};
   $$('#main th[data-sort]').forEach(th=>th.onclick=()=>{
     const c=th.dataset.sort;
     state.tblSort=(S&&S.col===c)?{col:c,dir:-S.dir}:{col:c,dir:1};
@@ -846,7 +896,7 @@ function openTask(id){
     if(f==='t'&&!v.trim()){el.value=t.t;return;}
     if(f==='sub')v=v||null;
     t[f]=v;t.updated=new Date();
-    if(f==='sub')t.ph=v==='1J'?2:1;                    // phase move keeps board grouping right
+    if(f==='sub'&&v)t.ph=1;   // all 1A-1J sections sit under Phase 1 App Build
     if(f==='s'){applyStatusProgress(t);openTask(id);}   // status change auto-sets progress %
     if(f==='team'){ // re-map assignee list to the chosen team
       const allowed=TEAM_ASSIGNEES[v||'']||['Unassigned'];
@@ -960,7 +1010,7 @@ function newTask(status,dueStr,parentId){
     const title=$('#nt-title').value.trim();
     if(!title){toast('Give the task a name ✍️');$('#nt-title').focus();return;}
     const sub=$('#nt-sub').value||null;
-    addTask({t:title,s:$('#nt-status').value,sub,ph:sub==='1J'?2:1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
+    addTask({t:title,s:$('#nt-status').value,sub,ph:1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
       ttype:$('#nt-ttype').value,app:$('#nt-app').value||'',parent:parentId||null,
       due:new Date($('#nt-due').value+'T12:00:00'),d:$('#nt-desc').value.trim(),w9:!!$('#nt-crit').value});
     applyStatusProgress(TASKS[TASKS.length-1]);
@@ -1000,13 +1050,14 @@ function renderPhases(){
         return `<div title="Week ${w}${ms?' — '+ms[1]:''}" style="flex:1;height:34px;border-radius:6px;background:${bg};opacity:${w<=CUR_WEEK?1:.45};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;position:relative;${w===CUR_WEEK?'outline:2.5px solid var(--accent);outline-offset:2px;':''}">W${w}${ms?'<span style="position:absolute;top:-16px;font-size:9px;color:var(--accent);white-space:nowrap">▼ '+ms[1]+'</span>':''}</div>`;
      }).join('')+`</div>
      <div class="legend" style="margin-top:14px"><span><i style="background:var(--p1a)"></i>Sprint to bank meeting</span><span><i style="background:var(--p2a)"></i>Post-meeting: QA + admin cutover</span><span><i style="background:var(--accent)"></i>Current week</span></div></div>
-  <div class="card"><div class="sec-title" style="font-size:15px">🎯 Critical path — must finish before Aug 4</div>
-    <ul style="margin:4px 0 0 18px;line-height:2;font-size:12.5px">
-      <li>Farmer app MVP — registrations working, tasks submittable (1A + Task Submission)</li>
-      <li>Field-agent verification working (1C — Farmer Verification Task)</li>
-      <li>Payment processing working (1D — all six tasks)</li>
-      <li>Admin portal approvals working (1J — Approvals Tab + Assign to Field Agent)</li>
-    </ul></div>
+  <div class="card"><div class="sec-title" style="font-size:15px">🎯 Critical path
+      <span class="sub">${CRIT.filter(c=>c.done).length}/${CRIT.length} complete — tick items off as you go</span></div>
+    <div class="util-bar" style="margin-bottom:10px"><i style="width:${CRIT.length?Math.round(CRIT.filter(c=>c.done).length/CRIT.length*100):0}%;background:var(--green)"></i></div>
+    <div id="critlist">${CRIT.map(c=>`<div class="subtask ${c.done?'done':''}">
+        <input type="checkbox" id="cp${c.id}" data-cp="${c.id}" ${c.done?'checked':''}>
+        <label for="cp${c.id}" style="flex:1">${esc(c.label)}</label>
+        <a href="#" class="cact" data-cpdel="${c.id}" title="Remove item">🗑</a></div>`).join('')||'<div style="color:#999;font-size:12px">No critical-path items yet.</div>'}</div>
+    <div style="display:flex;gap:8px;margin-top:10px"><input id="cpnew" placeholder="Add a critical-path item…" autocomplete="off" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px"><button class="btn" id="cpadd" style="font-size:12px">＋ Add</button></div></div>
   <div class="sec-title" style="font-size:15px">📊 Phase breakdown <span class="sub">(click a phase to see its tasks)</span></div>
   <div id="wklist">`+Object.keys(SUBPHASES).map(code=>{
     const g=TASKS.filter(t=>t.sub===code);const s=groupStats(t=>t.sub===code);
@@ -1018,6 +1069,23 @@ function renderPhases(){
       <span class="chev">▶</span></div>
     <div class="wk-body">${g.map(t=>`<div class="subtask" style="cursor:pointer" onclick="openTask(${t.id})"><span>${t.w9?'🏦 ':''}${esc(t.t)}</span>${stBadge(t)}</div>`).join('')}</div></div>`;
   }).join('')+`</div>`;
+  // --- critical path checklist (item 5) ---
+  $$('#critlist [data-cp]').forEach(cb=>cb.onchange=async()=>{
+    const id=+cb.dataset.cp,it=CRIT.find(c=>c.id===id);if(!it)return;
+    it.done=cb.checked;
+    if(DB&&USER)await DB.from('critical_path').update({done:it.done}).eq('id',id);
+    render();toast(it.done?'Ticked off ✓':'Unticked');});
+  $$('#critlist [data-cpdel]').forEach(a=>a.onclick=async e=>{e.preventDefault();
+    const id=+a.dataset.cpdel;CRIT=CRIT.filter(c=>c.id!==id);
+    if(DB&&USER)await DB.from('critical_path').delete().eq('id',id);
+    render();toast('Item removed 🗑');});
+  const ca=$('#cpadd');
+  if(ca)ca.onclick=async()=>{
+    const v=$('#cpnew').value.trim();if(!v)return toast('Type an item first');
+    if(DB&&USER){const {data}=await DB.from('critical_path').insert({label:v,sort:CRIT.length+1}).select().single();
+      if(data)CRIT.push({id:data.id,label:data.label,done:false});}
+    else CRIT.push({id:Date.now(),label:v,done:false});
+    render();toast('Critical-path item added ✓');};
 }
 
 /* ================= GANTT ================= */
@@ -1412,6 +1480,13 @@ async function dbDeleteTask(t){ if(!DB||!USER) return;
   const {error}=await DB.from('tasks').delete().eq('id',t.id);
   if(error) toast('⚠ Sync error: '+error.message); else syncStamp(); }
 let MYNOTIFS=[];
+let CRIT=[{id:1,label:'Farmer app MVP — registrations working, tasks submittable',done:false},
+          {id:2,label:'Field-agent verification working',done:false},
+          {id:3,label:'Payment processing working',done:false},
+          {id:4,label:'Admin portal approvals working',done:false}];
+async function refreshCrit(){ if(!DB||!USER) return;
+  const {data}=await DB.from('critical_path').select('*').order('sort');
+  if(data&&data.length){CRIT=data.map(r=>({id:r.id,label:r.label,done:!!r.done}));if(state.view==='phases')render();} }
 async function dbNotify(recipient,txt,taskId){ if(!DB||!USER) return;
   await DB.from('notifications').insert({recipient,actor:me(),txt,task_id:taskId||null}); }
 async function refreshNotifsDb(){ if(!DB||!USER) return;
@@ -1446,6 +1521,7 @@ function subscribeRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'notes'},()=>refreshNotes())
     .on('postgres_changes',{event:'*',schema:'public',table:'profiles'},()=>refreshMembers())
     .on('postgres_changes',{event:'*',schema:'public',table:'notifications'},()=>refreshNotifsDb())
+    .on('postgres_changes',{event:'*',schema:'public',table:'critical_path'},()=>refreshCrit())
     .subscribe();
 }
 function showAuth(){ $('#auth-ov').classList.add('open'); }
@@ -1476,6 +1552,7 @@ async function afterLogin(){
   if(nd&&nd.length)notes=nd.map(nFromRow);
   await refreshMembers(); // team roster from profiles table (see supabase-add-team.sql)
   refreshNotifsDb();      // @mention notifications for the signed-in user
+  refreshCrit();          // shared critical-path checklist
   subscribeRealtime();
   renderNotifs();render();syncStamp();
   toast('Signed in as '+me()+' 👋');
