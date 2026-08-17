@@ -347,12 +347,12 @@ svg text{font-family:inherit}
   <main id="main"></main>
 
   <aside id="rightbar">
-    <div class="rb-sec"><h4>Filters — Phase</h4>
+    <div class="rb-sec"><h4>Filters — Phase</h4><div id="phasefilter">
       <label class="chk"><input type="checkbox" name="fphase" value="all" checked> All Phases</label>
       <label class="chk"><input type="checkbox" name="fphase" value="1"> 📱 Phase 1 App Build</label>
       <label class="chk"><input type="checkbox" name="fphase" value="2"> 🚀 Phase 2 Post-Roll Out</label>
       <label class="chk"><input type="checkbox" name="fphase" value="w9"> 🏦 Critical Path</label>
-    </div>
+    </div></div>
     <div class="rb-sec"><h4>Status</h4>
       <label class="chk"><input type="checkbox" name="fstatus" value="all" checked> All Statuses</label>
       <label class="chk"><input type="checkbox" name="fstatus" value="todo"> Not Started</label>
@@ -486,8 +486,16 @@ const SUBPHASES={
  '1A':'Farmer Registration & Profile','1B':'Farmer App — Projects & Tasks','1C':'Field Agent App — Farmer Management',
  '1D':'Banking App — Payment Processing','1E':'Database & Sync Architecture','1F':'Error Handling & Logging',
  '1G':'Security & Permissions','1H':'Testing & QA','1I':'Critical Bug Fixes','1J':'Admin Portal — Loveable'};
-const PHASE_NAMES={1:'Phase 1 App Build',2:'Phase 2 Post-Roll Out Updates'};
-const PHASE_OF_SUB=s=>1; // every 1A–1J section belongs to Phase 1 App Build (incl. 1J)
+// PHASES are managed data (add/edit/delete) — see the Phases tab. Fallback used before the DB loads.
+let PHASES=[{id:1,num:1,name:'Phase 1 App Build',sort:1},{id:2,num:2,name:'Phase 2 Post-Roll Out Updates',sort:2}];
+const phaseName=n=>{const p=PHASES.find(x=>x.num===+n);return p?p.name:'Phase '+n;};
+const phaseOptions=cur=>PHASES.map(p=>`<option value="${p.num}" ${+cur===p.num?'selected':''}>${esc(p.name)}</option>`).join('');
+// Only these people may add/edit/delete phases
+const PHASE_ADMINS=['georgia@sprinkldigital.com','joestringer95@yahoo.co.uk'];
+const canManagePhases=()=>!USER||PHASE_ADMINS.includes((USER.email||'').toLowerCase());
+async function refreshPhases(){ if(!DB||!USER) return;
+  const {data}=await DB.from('phases').select('*').order('sort');
+  if(data&&data.length){PHASES=data;render();} }
 const DUE={'1A':'2026-08-03','1B':'2026-08-07','1C':'2026-08-07','1D':'2026-08-03','1E':'2026-08-08','1F':'2026-08-10','1G':'2026-08-11','1H':'2026-08-13','1I':'2026-08-05','1J':'2026-08-14'};
 let _j=0;
 function T(sub,t,d,opt){opt=opt||{};
@@ -639,7 +647,7 @@ function cardHTML(t){
     <h5>📦 ${esc(t.t)}</h5>
     ${t.d?`<div class="desc">${esc(t.d)}</div>`:''}
     <div class="trow">
-      ${ttypePill(t)}<span class="pill ph${t.ph}">${t.sub||('P'+t.ph)}</span>${t.w9?'<span class="pill hi">🏦 CRIT</span>':''}${childTasks(t).length?`<span class="pill dep" title="Subtasks — open task to manage">🧩 ${childTasks(t).length}</span>`:''}
+      ${ttypePill(t)}<span class="pill ph${t.ph}" title="${esc(phaseName(t.ph))}">${esc(phaseName(t.ph).replace(/^Phase (\d+).*$/,'P$1'))}</span>${t.sub?`<span class="pill dep" title="${esc(SUBPHASES[t.sub]||'')}">${t.sub}</span>`:''}${t.w9?'<span class="pill hi">🏦 CRIT</span>':''}${childTasks(t).length?`<span class="pill dep" title="Subtasks — open task to manage">🧩 ${childTasks(t).length}</span>`:''}
       <span class="due ${late?'late':''}">📅 ${late?'⚠ ':''}${fmtD(t.due)}</span>
       <span class="pill ${PRIO[t.pr]}">${t.pr.toUpperCase()}</span>
       ${state.tgl.risk&&t.risk?'<span class="pill risk">⚠ RISK</span>':''}
@@ -740,12 +748,12 @@ function renderTasks(){
   // --- column sort (item 8) ---
   if(S&&S.col){
     const SO=Object.keys(STATUS);
-    const key={task:t=>t.t.toLowerCase(),ttype:t=>t.ttype||'Task',team:t=>(t.team||'').toLowerCase(),phase:t=>t.sub||'zz',status:t=>SO.indexOf(t.s),
+    const key={task:t=>t.t.toLowerCase(),ttype:t=>t.ttype||'Task',team:t=>(t.team||'').toLowerCase(),phase:t=>t.ph,sub:t=>t.sub||'zz',status:t=>SO.indexOf(t.s),
       pr:t=>PRIO_ORDER[t.pr]??2,due:t=>+t.due,as:t=>t.as.toLowerCase(),prog:t=>t.prog,est:t=>t.est}[S.col];
     if(key)list=[...list].sort((a,b)=>{const x=key(a),y=key(b);return (x<y?-1:x>y?1:0)*S.dir;});
   }
   const arrow=c=>S&&S.col===c?(S.dir>0?' ▲':' ▼'):'';
-  const cols=[['task','Task'],['ttype','Task Type'],['team','Team'],['phase','Phase'],['status','Status'],['pr','Priority'],['due','Due'],['as','Assignee'],['prog','Progress'],['est','Est.']];
+  const cols=[['task','Task'],['ttype','Task Type'],['team','Team'],['phase','Phase'],['sub','Phase Subsection'],['status','Status'],['pr','Priority'],['due','Due'],['as','Assignee'],['prog','Progress'],['est','Est.']];
   const selN=state.sel.size;
   const bulkBar=selN?`<div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:10px;border-color:var(--green)">
     <b style="font-size:13px">${selN} selected</b>
@@ -763,8 +771,8 @@ function renderTasks(){
      <th><select data-tf="ttype" style="margin-bottom:3px"><option value="">All types</option>${TTYPES.map(v=>`<option ${f.ttype===v?'selected':''}>${v}</option>`).join('')}</select>
          <select data-tf="scope"><option value="">Parents + subtasks</option><option value="parent" ${f.scope==='parent'?'selected':''}>Parents only</option><option value="sub" ${f.scope==='sub'?'selected':''}>Subtasks only</option></select></th>
      <th><select data-tf="team"><option value="">All</option>${['Product Team','SLT','Equity Bank'].map(v=>`<option ${f.team===v?'selected':''}>${v}</option>`).join('')}</select></th>
-     <th><select data-tf="phase" style="margin-bottom:3px"><option value="">All phases</option><option value="1" ${f.phase==='1'?'selected':''}>Phase 1 App Build</option><option value="2" ${f.phase==='2'?'selected':''}>Phase 2 Post-Roll Out</option></select>
-         <select data-tf="sub"><option value="">All sections</option>${Object.keys(SUBPHASES).map(v=>`<option ${f.sub===v?'selected':''}>${v} — ${esc(SUBPHASES[v])}</option>`).join('')}</select></th>
+     <th><select data-tf="phase"><option value="">All phases</option>${PHASES.map(p=>`<option value="${p.num}" ${f.phase===String(p.num)?'selected':''}>${esc(p.name)}</option>`).join('')}</select></th>
+     <th><select data-tf="sub"><option value="">All subsections</option>${Object.keys(SUBPHASES).map(v=>`<option value="${v}" ${f.sub===v?'selected':''}>${v} — ${esc(SUBPHASES[v])}</option>`).join('')}</select></th>
      <th><select data-tf="status"><option value="">All</option>${Object.keys(STATUS).map(v=>`<option value="${v}" ${f.status===v?'selected':''}>${STATUS[v].label}</option>`).join('')}</select></th>
      <th><select data-tf="pr"><option value="">All</option>${['Urgent','High','Medium','Low'].map(v=>`<option ${f.pr===v?'selected':''}>${v}</option>`).join('')}</select></th>
      <th><input data-tf="due" value="${esc(f.due||'')}" placeholder="e.g. Aug 4"></th>
@@ -776,7 +784,8 @@ function renderTasks(){
     <td>${t.parent?'<span style="color:var(--muted)">↳</span> ':''}<b>${esc(t.t)}</b>${t.risk?' <span class="pill risk">⚠</span>':''}${t.deps.length?' <span class="pill dep">🔗</span>':''}${childTasks(t).length?` <span class="pill dep">🧩 ${childTasks(t).length}</span>`:''}</td>
     <td>${ttypePill(t)}${t.parent?' <span class="pill dep">SUB</span>':''}</td>
     <td>${t.team?esc(t.team):'<span style="color:#aaa">—</span>'}</td>
-    <td><span class="pill ph${t.ph}">${t.sub||('P'+t.ph)}</span></td>
+    <td><span class="pill ph${t.ph}">${esc(phaseName(t.ph))}</span></td>
+    <td>${t.sub?`<span class="pill dep" title="${esc(SUBPHASES[t.sub]||'')}">${t.sub}</span>`:'<span style="color:#aaa">—</span>'}</td>
     <td><span class="stbadge" style="background:${STATUS[t.s].col}">${STATUS[t.s].label}</span></td>
     <td><span class="pill ${PRIO[t.pr]}">${t.pr}</span></td>
     <td class="${isOverdue(t)?'due late':''}">${fmtD(t.due)}</td><td>${esc(t.as)}</td>
@@ -855,14 +864,15 @@ function openTask(id){
   const parentT=isSub?TASKS.find(x=>x.id===t.parent):null;
   const m=$('#modal');
   m.innerHTML=`<button class="close" onclick="closeModal()">✕</button>
-  ${ttypePill(t)} ${isSub?'<span class="pill dep">🧩 SUBTASK</span>':''} <span class="pill ph${t.ph}">${t.sub?t.sub+' · '+esc(SUBPHASES[t.sub]||''):'Phase '+t.ph}</span> ${t.w9?'<span class="pill hi">🏦 CRITICAL PATH</span>':''} ${t.risk?'<span class="pill risk">⚠ RISK FLAGGED</span>':''} ${isOverdue(t)?'<span class="pill hi">OVERDUE</span>':''}
+  ${ttypePill(t)} ${isSub?'<span class="pill dep">🧩 SUBTASK</span>':''} <span class="pill ph${t.ph}">${esc(phaseName(t.ph))}</span>${t.sub?`<span class="pill dep">${t.sub} · ${esc(SUBPHASES[t.sub]||'')}</span>`:''} ${t.w9?'<span class="pill hi">🏦 CRITICAL PATH</span>':''} ${t.risk?'<span class="pill risk">⚠ RISK FLAGGED</span>':''} ${isOverdue(t)?'<span class="pill hi">OVERDUE</span>':''}
   ${isSub?`<div style="margin-top:10px;background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12.5px">↳ Subtask of <a href="#" id="openparent" style="color:var(--green);font-weight:700">${esc(parentT?parentT.t:'(parent missing)')}</a></div>`:''}
   <div class="mfield" style="margin-top:10px"><label>Task title ✏️</label><input data-f="t" value="${esc(t.t)}" autocomplete="off" style="font-size:15px;font-weight:700;width:100%;padding:8px;border:1px solid var(--border);border-radius:7px"></div>
   <div class="mfield" style="margin-top:8px"><label>Description ✏️</label><textarea data-f="d" style="width:100%;min-height:52px;padding:8px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px">${esc(t.d||'')}</textarea></div>
   <div class="mgrid">
     <div class="mfield"><label>Status</label><select data-f="s">${Object.keys(STATUS).map(s=>`<option value="${s}" ${t.s===s?'selected':''}>${STATUS[s].label}</option>`).join('')}</select></div>
     <div class="mfield"><label>Due date</label><input type="date" data-f="due" value="${t.due.toISOString().slice(0,10)}"></div>
-    <div class="mfield"><label>Phase</label><select data-f="sub">${Object.keys(SUBPHASES).map(c=>`<option value="${c}" ${t.sub===c?'selected':''}>${c} — ${esc(SUBPHASES[c])}</option>`).join('')}<option value="" ${!t.sub?'selected':''}>General / other</option></select></div>
+    <div class="mfield"><label>Phase</label><select data-f="ph">${phaseOptions(t.ph)}</select></div>
+    <div class="mfield"><label>Phase Subsection</label><select data-f="sub"><option value="" ${!t.sub?'selected':''}>— None —</option>${Object.keys(SUBPHASES).map(c=>`<option value="${c}" ${t.sub===c?'selected':''}>${c} — ${esc(SUBPHASES[c])}</option>`).join('')}</select></div>
     <div class="mfield"><label>Task type</label><select data-f="ttype">${TTYPES.map(v=>`<option ${t.ttype===v?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="mfield"><label>Application/Tool</label><select data-f="app">${APPS.map(v=>`<option value="${v}" ${(t.app||'')===v?'selected':''}>${v||'—'}</option>`).join('')}</select></div>
     <div class="mfield"><label>Team Assigned</label><select data-f="team" id="m-team">${teamOptions(t.team)}</select></div>
@@ -896,7 +906,7 @@ function openTask(id){
     if(f==='t'&&!v.trim()){el.value=t.t;return;}
     if(f==='sub')v=v||null;
     t[f]=v;t.updated=new Date();
-    if(f==='sub'&&v)t.ph=1;   // all 1A-1J sections sit under Phase 1 App Build
+    if(f==='ph')t.ph=+v;      // phase is now chosen explicitly
     if(f==='s'){applyStatusProgress(t);openTask(id);}   // status change auto-sets progress %
     if(f==='team'){ // re-map assignee list to the chosen team
       const allowed=TEAM_ASSIGNEES[v||'']||['Unassigned'];
@@ -991,7 +1001,8 @@ function newTask(status,dueStr,parentId){
   ${parentT?`<div style="margin-top:8px;background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12.5px">↳ Will be a subtask of <b>${esc(parentT.t)}</b></div>`:''}
   <div class="mfield" style="margin-top:12px"><label>Task name</label><input id="nt-title" placeholder="What needs doing?" autocomplete="off"></div>
   <div class="mgrid">
-    <div class="mfield"><label>Phase</label><select id="nt-sub">${Object.keys(SUBPHASES).map(c=>`<option value="${c}">${c} — ${esc(SUBPHASES[c])}</option>`).join('')}<option value="">General / other</option></select></div>
+    <div class="mfield"><label>Phase</label><select id="nt-ph">${phaseOptions(1)}</select></div>
+    <div class="mfield"><label>Phase Subsection</label><select id="nt-sub"><option value="">— None —</option>${Object.keys(SUBPHASES).map(c=>`<option value="${c}">${c} — ${esc(SUBPHASES[c])}</option>`).join('')}</select></div>
     <div class="mfield"><label>Task type</label><select id="nt-ttype">${TTYPES.map(v=>`<option>${v}</option>`).join('')}</select></div>
     <div class="mfield"><label>Application/Tool</label><select id="nt-app">${APPS.map(v=>`<option value="${v}">${v||'—'}</option>`).join('')}</select></div>
     <div class="mfield"><label>Status</label><select id="nt-status">${Object.keys(STATUS).map(s=>`<option value="${s}" ${s===(status||'todo')?'selected':''}>${STATUS[s].label}</option>`).join('')}</select></div>
@@ -1010,7 +1021,7 @@ function newTask(status,dueStr,parentId){
     const title=$('#nt-title').value.trim();
     if(!title){toast('Give the task a name ✍️');$('#nt-title').focus();return;}
     const sub=$('#nt-sub').value||null;
-    addTask({t:title,s:$('#nt-status').value,sub,ph:1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
+    addTask({t:title,s:$('#nt-status').value,sub,ph:+$('#nt-ph').value||1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
       ttype:$('#nt-ttype').value,app:$('#nt-app').value||'',parent:parentId||null,
       due:new Date($('#nt-due').value+'T12:00:00'),d:$('#nt-desc').value.trim(),w9:!!$('#nt-crit').value});
     applyStatusProgress(TASKS[TASKS.length-1]);
@@ -1058,7 +1069,17 @@ function renderPhases(){
         <label for="cp${c.id}" style="flex:1">${esc(c.label)}</label>
         <a href="#" class="cact" data-cpdel="${c.id}" title="Remove item">🗑</a></div>`).join('')||'<div style="color:#999;font-size:12px">No critical-path items yet.</div>'}</div>
     <div style="display:flex;gap:8px;margin-top:10px"><input id="cpnew" placeholder="Add a critical-path item…" autocomplete="off" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px"><button class="btn" id="cpadd" style="font-size:12px">＋ Add</button></div></div>
-  <div class="sec-title" style="font-size:15px">📊 Phase breakdown <span class="sub">(click a phase to see its tasks)</span></div>
+  ${canManagePhases()?`<div class="card"><div class="sec-title" style="font-size:15px">🗂️ Manage phases <span class="sub">add, rename or remove project phases</span></div>
+    <div id="phaselist">${PHASES.map(p=>`<div class="subtask" style="gap:10px">
+      <span class="pill ph${p.num}" style="min-width:52px;text-align:center">P${p.num}</span>
+      <input data-pname="${p.id}" value="${esc(p.name)}" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:7px;font-size:13px">
+      <span style="font-size:11.5px;color:var(--muted);white-space:nowrap">${TASKS.filter(t=>t.ph===p.num).length} tasks</span>
+      <a href="#" class="cact" data-pdel="${p.id}" title="Delete phase">🗑</a></div>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <input id="pnew" placeholder="New phase name…" autocomplete="off" style="flex:1;min-width:200px;padding:7px;border:1px solid var(--border);border-radius:7px">
+      <button class="btn" id="padd" style="font-size:12px">＋ Add phase</button></div>
+    <p style="font-size:11.5px;color:var(--muted);margin-top:8px">Edits save as you type (click away to confirm). A phase can only be deleted once it has no tasks.</p></div>`:''}
+  <div class="sec-title" style="font-size:15px">📊 Phase Subsection breakdown <span class="sub">(click a subsection to see its tasks)</span></div>
   <div id="wklist">`+Object.keys(SUBPHASES).map(code=>{
     const g=TASKS.filter(t=>t.sub===code);const s=groupStats(t=>t.sub===code);
     return `<div class="wk">
@@ -1069,6 +1090,34 @@ function renderPhases(){
       <span class="chev">▶</span></div>
     <div class="wk-body">${g.map(t=>`<div class="subtask" style="cursor:pointer" onclick="openTask(${t.id})"><span>${t.w9?'🏦 ':''}${esc(t.t)}</span>${stBadge(t)}</div>`).join('')}</div></div>`;
   }).join('')+`</div>`;
+  // --- phase management (add / rename / delete) ---
+  $$('#phaselist [data-pname]').forEach(inp=>inp.onchange=async()=>{
+    const id=+inp.dataset.pname,p=PHASES.find(x=>x.id===id);if(!p)return;
+    const v=inp.value.trim(); if(!v){inp.value=p.name;return;}
+    p.name=v; if(DB&&USER)await DB.from('phases').update({name:v}).eq('id',id);
+    render();toast('Phase renamed ✓');});
+  $$('#phaselist [data-pdel]').forEach(a=>a.onclick=async e=>{e.preventDefault();
+    const id=+a.dataset.pdel,p=PHASES.find(x=>x.id===id);if(!p)return;
+    const n=TASKS.filter(t=>t.ph===p.num).length;
+    if(n){toast('Cannot delete — '+n+' task(s) still in this phase. Move them first.');return;}
+    if(PHASES.length<=1){toast('You need at least one phase');return;}
+    $('#modal').innerHTML=`<div style="text-align:center;padding:26px 12px"><h3>Delete phase?</h3>
+      <p style="color:var(--muted);font-size:12.5px;margin:10px 0 20px">"${esc(p.name)}" will be removed for the whole team.</p>
+      <button class="btn" id="pyes" style="background:var(--pr-high);padding:9px 30px">Yes</button>
+      <button class="btn sec" id="pno" style="margin-left:12px;padding:9px 30px">No</button></div>`;
+    $('#modal-ov').classList.add('open');
+    $('#pyes').onclick=async()=>{PHASES=PHASES.filter(x=>x.id!==id);
+      if(DB&&USER)await DB.from('phases').delete().eq('id',id);
+      closeModal();render();toast('Phase deleted 🗑');};
+    $('#pno').onclick=closeModal;});
+  const pa=$('#padd');
+  if(pa)pa.onclick=async()=>{
+    const v=$('#pnew').value.trim(); if(!v)return toast('Give the phase a name');
+    const num=Math.max(0,...PHASES.map(p=>p.num))+1;
+    if(DB&&USER){const {data,error}=await DB.from('phases').insert({num,name:v,sort:num}).select().single();
+      if(error){toast('⚠ '+error.message);return;} PHASES.push(data);}
+    else PHASES.push({id:Date.now(),num,name:v,sort:num});
+    render();toast('Phase added ✓');};
   // --- critical path checklist (item 5) ---
   $$('#critlist [data-cp]').forEach(cb=>cb.onchange=async()=>{
     const id=+cb.dataset.cp,it=CRIT.find(c=>c.id===id);if(!it)return;
@@ -1373,6 +1422,7 @@ function setView(v){state.view=v;render();}
 function render(){
   (VIEWS[state.view]||renderDashboard)();
   renderSidebar();
+  renderPhaseFilter();
   $$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));
   $$('#vtoggle button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));
   $$('[data-ss]').forEach(b=>b.onclick=()=>{state.savedSearch=state.savedSearch===b.dataset.ss?null:b.dataset.ss;render();});
@@ -1453,6 +1503,13 @@ async function refreshMembers(){
   const {data}=await DB.from('profiles').select('*').order('created_at');
   if(data&&data.length){MEMBERS=data.map(p=>({name:p.name,email:p.email,role:p.role||'Team Member'}));renderAssigneeFilter();render();}
 }
+function renderPhaseFilter(){
+  const el=$('#phasefilter'); if(!el)return;
+  el.innerHTML=`<label class="chk"><input type="checkbox" name="fphase" value="all" ${state.f.phase.has('all')?'checked':''}> All Phases</label>`
+   +PHASES.map(p=>`<label class="chk"><input type="checkbox" name="fphase" value="${p.num}" ${state.f.phase.has(String(p.num))?'checked':''}> ${esc(p.name)}</label>`).join('')
+   +`<label class="chk"><input type="checkbox" name="fphase" value="w9" ${state.f.phase.has('w9')?'checked':''}> 🏦 Critical Path</label>`;
+  wireFilters();
+}
 function renderAssigneeFilter(){
   const names=[...new Set([...memberNames(),...taskAssignees(),'Product Team','Banking Team','Unassigned'])];
   $('#assnfilter').innerHTML=`<label class="chk"><input type="checkbox" name="fassn" value="all" ${state.f.assn.has('all')?'checked':''}> All Assignees</label>`
@@ -1522,6 +1579,7 @@ function subscribeRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'profiles'},()=>refreshMembers())
     .on('postgres_changes',{event:'*',schema:'public',table:'notifications'},()=>refreshNotifsDb())
     .on('postgres_changes',{event:'*',schema:'public',table:'critical_path'},()=>refreshCrit())
+    .on('postgres_changes',{event:'*',schema:'public',table:'phases'},()=>refreshPhases())
     .subscribe();
 }
 function showAuth(){ $('#auth-ov').classList.add('open'); }
@@ -1553,6 +1611,7 @@ async function afterLogin(){
   await refreshMembers(); // team roster from profiles table (see supabase-add-team.sql)
   refreshNotifsDb();      // @mention notifications for the signed-in user
   refreshCrit();          // shared critical-path checklist
+  refreshPhases();        // managed phase list
   subscribeRealtime();
   renderNotifs();render();syncStamp();
   toast('Signed in as '+me()+' 👋');
