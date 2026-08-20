@@ -457,6 +457,7 @@ const TEAM_ASSIGNEES = {
 const TTYPES=['Task','New Feature','Change Request','Issue'];
 const TTYPE_CLS={'Task':'task','New Feature':'feat','Change Request':'cr','Issue':'iss'};
 const APPS=['','Cursor','Loveable','Supabase','Netlify','Other'];
+const PORTALS=['','Web Portal','Mobile App','Both'];
 function ttypePill(t){return `<span class="pill tt-${TTYPE_CLS[t.ttype]||'task'}">${esc(t.ttype||'Task')}</span>`;}
 function childTasks(t){return TASKS.filter(x=>x.parent===t.id);}
 function parentCandidates(t){return TASKS.filter(x=>!x.parent&&x.id!==t.id);}
@@ -477,7 +478,7 @@ let TASKS=[];let _id=0;
 function addTask(t){
   const due=t.due instanceof Date?t.due:new Date(t.due);
   TASKS.push(Object.assign({
-    id:++_id,ph:1,pr:'Medium',as:'Unassigned',team:'',ttype:'Task',parent:null,app:'',d:'',prog:0,est:8,spent:0,risk:false,w9:false,deps:[],
+    id:++_id,ph:1,pr:'Medium',as:'Unassigned',team:'',ttype:'Task',parent:null,app:'',portal:'',d:'',prog:0,est:8,spent:0,risk:false,w9:false,deps:[],
     subtasks:[],comments:[],attachments:[],updated:new Date(TODAY-Math.floor(rnd()*12)*864e5)
   },t,{due}));
 }
@@ -594,11 +595,11 @@ T('1J','Connect to Supabase','Link Loveable UI to NEW Supabase database',{pr:'Hi
 const MILESTONES=[[6,'🏦 Bank Meeting Aug 4'],[8,'Admin cutover']];
 const RISKS=[
  ['red','BLOCKER: Farmer CSV import errors','Data validation failing on import — delays testing with real farmer data.','Being addressed with client; resolution TBD after client meeting.','Georgia'],
- ['red','Bank meeting Aug 4 ('+DAYS_TO_BANK+' days)','Farmer app MVP, field-agent verification, payment processing & admin approvals must all work.','Use the 🏦 Critical Path filter to track must-finish tasks.','Georgia'],
+ ['green','Bank meeting — COMPLETE ✅','Held 4 August 2026. Farmer app MVP, field-agent verification, payment processing and admin approvals were all demonstrated.','Focus now moves to Phase 1A pre-go-live testing.','Georgia'],
  ['yellow','Parallel build streams','Cursor (app) and Loveable (admin portal) building simultaneously.','NEW Supabase strategy isolates the admin platform — zero risk to live data.','Georgia'],
  ['green','NEW Supabase instance created','Isolated from admin platform; schema defined (8 tables).','SQLite → Supabase migration is task 1E-2.','Georgia']];
 const NOTIFS=[
- ['🏦','Bank meeting in '+DAYS_TO_BANK+' days','August 4 — critical path must be complete'],
+ ['✅','Bank meeting complete','Held 4 August 2026 — critical path delivered'],
  ['🔴','BLOCKER: Farmer CSV import errors','Being addressed with client — delays real-data testing'],
  ['🔄','Two build streams running','Cursor: app (1A–1I) · Loveable: admin portal (1J)'],
  ['✅','NEW Supabase instance created','Isolated from admin platform — zero risk']];
@@ -624,7 +625,10 @@ function isOverdue(t){return t.s!=='done'&&t.due<TODAY;}
 function visibleTasks(){
   let list=TASKS.filter(t=>{
     const f=state.f;
-    if(!f.phase.has('all')){let ok=false;if(f.phase.has('1')&&t.ph===1)ok=true;if(f.phase.has('2')&&t.ph===2)ok=true;if(f.phase.has('w9')&&t.w9)ok=true;if(!ok)return false;}
+    if(!f.phase.has('all')){let ok=false;
+      if(f.phase.has(String(t.ph)))ok=true;              // works for any phase, incl. newly added ones
+      if(f.phase.has('w9')&&t.w9)ok=true;
+      if(!ok)return false;}
     if(!f.status.has('all')&&!f.status.has(t.s))return false;
     if(!f.prio.has('all')&&!f.prio.has(t.pr))return false;
     if(!f.assn.has('all')&&!f.assn.has(t.as))return false;
@@ -673,23 +677,26 @@ function metricsHTML(){
     <div class="metric"><div class="mi" style="background:#e3f2fd">👥</div><div><b>${nfmt(METRICS.users)} Users</b><span>Total registered${liveTag()}</span></div></div>
     <div class="metric"><div class="mi" style="background:var(--accent-light)">💰</div><div><b>${nfmt(METRICS.pending_kes)} KES</b><span>Pending payments${liveTag()}</span></div></div>
     <div class="metric"><div class="mi" style="background:#e8f5e9">✅</div><div><b>${all.pct}%</b><span>Overall progress (${all.d}/${all.n} done · ${all.p} in progress)</span></div></div>
-    <div class="metric"><div class="mi" style="background:#fdecea">🏦</div><div><b>${DAYS_TO_BANK} days</b><span>Until bank meeting — Aug 4</span></div></div>
+    <div class="metric"><div class="mi" style="background:#e8f5e9">✅</div><div><b>Complete</b><span>Bank meeting — held 4 Aug 2026</span></div></div>
   </div>`;
 }
 function goToPhase(ph,sub){state.tblF={};if(ph)state.tblF.phase=String(ph);if(sub)state.tblF.sub=sub;setView('tasks');
-  toast('Showing '+(sub?sub+' — '+SUBPHASES[sub]:PHASE_NAMES[ph]));}
+  toast('Showing '+(sub?sub+' — '+SUBPHASES[sub]:phaseName(ph)));}
 function phaseCardsHTML(big){
-  const app=groupStats(t=>t.ph===1), p2=groupStats(t=>t.ph===2), crit=groupStats(t=>t.w9);
+  const crit=groupStats(t=>t.w9);
+  const GRAD=['g1','g2','g3','g4'];
+  const phaseCards=PHASES.map((p,i)=>{
+    const st=groupStats(t=>t.ph===p.num);
+    const style=i>1?'background:linear-gradient(135deg,#26a69a,#00796b)':'';
+    return `<div class="pcard ${GRAD[i%4]}" style="cursor:pointer;${style}" onclick="goToPhase(${p.num})" title="Click to see all ${esc(p.name)} tasks">
+      <span class="ptag">click to open tasks →</span><h3>${esc(p.name)} <small style="font-weight:400">(${st.n} tasks)</small></h3>
+      <div class="pbar"><i style="width:${st.pct}%"></i></div><p><b>${st.pct}%</b> complete</p>
+      <div class="stats"><span>${st.d} Done ✅</span><span>${st.p} In Progress 🔄</span><span>${st.todo} Not Started ⏸️</span></div></div>`;}).join('');
   return `<div class="phase-row" ${big?'style="flex-wrap:wrap"':''}>
-    <div class="pcard g1" style="cursor:pointer" onclick="goToPhase(1)" title="Click to see all Phase 1 tasks"><span class="ptag">Active · click to open tasks →</span><h3>📱 Phase 1 App Build <small style="font-weight:400">(1A–1J · ${app.n} tasks)</small></h3>
-      <div class="pbar"><i style="width:${app.pct}%"></i></div><p><b>${app.pct}%</b> · Farmer app, Field Agent app, Banking app, DB & sync, security, QA, bug fixes, admin portal</p>
-      <div class="stats"><span>${app.d} Done ✅</span><span>${app.p} In Progress 🔄</span><span>${app.todo} Not Started ⏸️</span></div></div>
-    <div class="pcard g2" style="cursor:pointer" onclick="goToPhase(2)" title="Click to see all Phase 2 tasks"><span class="ptag">Post roll-out · click to open tasks →</span><h3>🚀 Phase 2 Post-Roll Out Updates <small style="font-weight:400">(${p2.n} tasks)</small></h3>
-      <div class="pbar"><i style="width:${p2.pct}%"></i></div><p><b>${p2.pct}%</b> · Change requests and enhancements raised after go-live.</p>
-      <div class="stats"><span>${p2.d} Done ✅</span><span>${p2.p} In Progress 🔄</span><span>${p2.todo} Not Started ⏸️</span></div></div>
-    <div class="pcard g3"><span class="ptag">${DAYS_TO_BANK} days away · Make or Break</span><h3>🏦 Bank Meeting — Aug 4</h3>
-      <p>Must work on the day: farmer registrations, task submission, field-agent verification, payment processing, admin approvals.</p>
-      <div class="stats"><span>${crit.d}/${crit.n} critical-path tasks done</span><span>⚠ Filter: 🏦 Critical Path</span></div></div>
+    ${phaseCards}
+    <div class="pcard g3" style="background:linear-gradient(135deg,#43a047,#1b5e20)"><span class="ptag">✅ Complete · 4 August 2026</span><h3>🏦 Bank Meeting — Delivered</h3>
+      <p>Demonstrated on the day: farmer registrations, task submission, field-agent verification, payment processing and admin approvals.</p>
+      <div class="stats"><span>✅ Critical path delivered</span><span>Next: Phase 1A pre-go-live testing</span></div></div>
     <div class="pcard g4" style="background:linear-gradient(135deg,#e53935,#8e2420)"><span class="ptag">🔴 Current Blockers</span><h3>⛔ Farmer CSV Import Errors</h3>
       <p>Data validation failing on import — delays testing with real farmer data. Being addressed with the client; resolution TBD after client meeting.</p>
       <div class="stats"><span>Priority: HIGH</span><span>Owner: Georgia + client</span></div></div>
@@ -740,6 +747,7 @@ function renderTasks(){
   if(f.scope==='sub')list=list.filter(t=>!!t.parent);
   if(f.team)list=list.filter(t=>(t.team||'')===f.team);
   if(f.phase)list=list.filter(t=>String(t.ph)===String(f.phase));
+  if(f.portal)list=list.filter(t=>(t.portal||'')===f.portal);
   if(f.sub)list=list.filter(t=>(t.sub||'')===f.sub);
   if(f.status)list=list.filter(t=>t.s===f.status);
   if(f.pr)list=list.filter(t=>t.pr===f.pr);
@@ -748,17 +756,19 @@ function renderTasks(){
   // --- column sort (item 8) ---
   if(S&&S.col){
     const SO=Object.keys(STATUS);
-    const key={task:t=>t.t.toLowerCase(),ttype:t=>t.ttype||'Task',team:t=>(t.team||'').toLowerCase(),phase:t=>t.ph,sub:t=>t.sub||'zz',status:t=>SO.indexOf(t.s),
+    const key={task:t=>t.t.toLowerCase(),ttype:t=>t.ttype||'Task',team:t=>(t.team||'').toLowerCase(),phase:t=>t.ph,sub:t=>t.sub||'zz',portal:t=>(t.portal||'zz'),status:t=>SO.indexOf(t.s),
       pr:t=>PRIO_ORDER[t.pr]??2,due:t=>+t.due,as:t=>t.as.toLowerCase(),prog:t=>t.prog,est:t=>t.est}[S.col];
     if(key)list=[...list].sort((a,b)=>{const x=key(a),y=key(b);return (x<y?-1:x>y?1:0)*S.dir;});
   }
   const arrow=c=>S&&S.col===c?(S.dir>0?' ▲':' ▼'):'';
-  const cols=[['task','Task'],['ttype','Task Type'],['team','Team'],['phase','Phase'],['sub','Phase Subsection'],['status','Status'],['pr','Priority'],['due','Due'],['as','Assignee'],['prog','Progress'],['est','Est.']];
+  const cols=[['task','Task'],['ttype','Task Type'],['team','Team'],['phase','Phase'],['sub','Phase Subsection'],['portal','Portal/Web'],['status','Status'],['pr','Priority'],['due','Due'],['as','Assignee'],['prog','Progress'],['est','Est.']];
   const selN=state.sel.size;
   const bulkBar=selN?`<div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:10px;border-color:var(--green)">
     <b style="font-size:13px">${selN} selected</b>
     <select id="bulk-status" style="padding:6px;border:1px solid var(--border);border-radius:7px"><option value="">Set status…</option>${Object.keys(STATUS).map(s=>`<option value="${s}">${STATUS[s].label}</option>`).join('')}</select>
     <select id="bulk-as" style="padding:6px;border:1px solid var(--border);border-radius:7px"><option value="">Set assignee…</option>${[...new Set(['Unassigned',...memberNames(),...taskAssignees(),'Product Team','Banking Team'])].map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+    <select id="bulk-ph" style="padding:6px;border:1px solid var(--border);border-radius:7px"><option value="">Move to phase…</option>${PHASES.map(p=>`<option value="${p.num}">${esc(p.name)}</option>`).join('')}</select>
+    <select id="bulk-sub" style="padding:6px;border:1px solid var(--border);border-radius:7px"><option value="">Move to subsection…</option><option value="__none">— None —</option>${Object.keys(SUBPHASES).map(v=>`<option value="${v}">${v} — ${esc(SUBPHASES[v])}</option>`).join('')}</select>
     <button class="btn sec" id="bulk-dup" style="font-size:12px">⧉ Duplicate</button>
     <button class="btn" id="bulk-del" style="background:var(--pr-high);font-size:12px">🗑 Delete</button>
     <button class="btn sec" id="bulk-clear" style="font-size:12px;margin-left:auto">Clear selection</button></div>`:'';
@@ -773,6 +783,7 @@ function renderTasks(){
      <th><select data-tf="team"><option value="">All</option>${['Product Team','SLT','Equity Bank'].map(v=>`<option ${f.team===v?'selected':''}>${v}</option>`).join('')}</select></th>
      <th><select data-tf="phase"><option value="">All phases</option>${PHASES.map(p=>`<option value="${p.num}" ${f.phase===String(p.num)?'selected':''}>${esc(p.name)}</option>`).join('')}</select></th>
      <th><select data-tf="sub"><option value="">All subsections</option>${Object.keys(SUBPHASES).map(v=>`<option value="${v}" ${f.sub===v?'selected':''}>${v} — ${esc(SUBPHASES[v])}</option>`).join('')}</select></th>
+     <th><select data-tf="portal"><option value="">All</option>${PORTALS.filter(Boolean).map(v=>`<option ${f.portal===v?'selected':''}>${v}</option>`).join('')}</select></th>
      <th><select data-tf="status"><option value="">All</option>${Object.keys(STATUS).map(v=>`<option value="${v}" ${f.status===v?'selected':''}>${STATUS[v].label}</option>`).join('')}</select></th>
      <th><select data-tf="pr"><option value="">All</option>${['Urgent','High','Medium','Low'].map(v=>`<option ${f.pr===v?'selected':''}>${v}</option>`).join('')}</select></th>
      <th><input data-tf="due" value="${esc(f.due||'')}" placeholder="e.g. Aug 4"></th>
@@ -786,6 +797,7 @@ function renderTasks(){
     <td>${t.team?esc(t.team):'<span style="color:#aaa">—</span>'}</td>
     <td><span class="pill ph${t.ph}">${esc(phaseName(t.ph))}</span></td>
     <td>${t.sub?`<span class="pill dep" title="${esc(SUBPHASES[t.sub]||'')}">${t.sub}</span>`:'<span style="color:#aaa">—</span>'}</td>
+    <td>${t.portal?esc(t.portal):'<span style="color:#aaa">—</span>'}</td>
     <td><span class="stbadge" style="background:${STATUS[t.s].col}">${STATUS[t.s].label}</span></td>
     <td><span class="pill ${PRIO[t.pr]}">${t.pr}</span></td>
     <td class="${isOverdue(t)?'due late':''}">${fmtD(t.due)}</td><td>${esc(t.as)}</td>
@@ -806,6 +818,14 @@ function renderTasks(){
     const v=ba.value;if(!v)return;
     for(const id of ids()){const t=TASKS.find(x=>x.id===id);if(t){t.as=v;t.updated=new Date();await dbSaveTask(t);} }
     toast(ids().length+' tasks assigned to '+v+' ✓');state.sel.clear();render();};
+  const bp=$('#bulk-ph'); if(bp)bp.onchange=async()=>{
+    const v=+bp.value;if(!v)return;
+    for(const id of ids()){const t=TASKS.find(x=>x.id===id);if(t){t.ph=v;t.updated=new Date();await dbSaveTask(t);} }
+    toast(ids().length+' task(s) moved to '+phaseName(v)+' ✓');state.sel.clear();render();};
+  const bsub=$('#bulk-sub'); if(bsub)bsub.onchange=async()=>{
+    const raw=bsub.value;if(!raw)return; const v=raw==='__none'?null:raw;
+    for(const id of ids()){const t=TASKS.find(x=>x.id===id);if(t){t.sub=v;t.updated=new Date();await dbSaveTask(t);} }
+    toast(ids().length+' task(s) moved to '+(v?v+' — '+SUBPHASES[v]:'no subsection')+' ✓');state.sel.clear();render();};
   const bd=$('#bulk-dup'); if(bd)bd.onclick=async()=>{
     const src=ids().map(id=>TASKS.find(x=>x.id===id)).filter(Boolean);
     for(const t of src){
@@ -839,6 +859,30 @@ function renderTasks(){
 }
 
 /* ================= MODAL ================= */
+const FILE_BUCKET='task-files';
+function attMeta(a){ // attachments may be a plain filename (legacy) or {name,url,path}
+  return (typeof a==='string')?{name:a,url:'',path:''}:a; }
+function attachHTML(t){
+  if(!t.attachments.length) return '<span style="color:#999;font-size:12px">None yet.</span>';
+  return t.attachments.map((a,i)=>{const m=attMeta(a);
+    return `<span class="attach">${m.url?`<a href="${esc(m.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">📄 ${esc(m.name)}</a>`:`📄 ${esc(m.name)}`}
+      <a href="#" class="cact" data-attdel="${i}" title="Remove attachment" style="margin-left:4px">✕</a></span>`;}).join('');
+}
+async function uploadAttachments(t,files){
+  const st=$('#attstatus');
+  if(!DB||!USER){toast('Sign in to upload files');return;}
+  for(const f of files){
+    if(f.size>25*1024*1024){toast(f.name+' is over 25MB — too large');continue;}
+    if(st)st.textContent='Uploading '+f.name+'…';
+    const path='task-'+t.id+'/'+Date.now()+'-'+f.name.replace(/[^\w.\-]/g,'_');
+    const {error}=await DB.storage.from(FILE_BUCKET).upload(path,f,{upsert:false});
+    if(error){toast('⚠ Upload failed: '+error.message);if(st)st.textContent='';return;}
+    const {data}=DB.storage.from(FILE_BUCKET).getPublicUrl(path);
+    t.attachments.push({name:f.name,url:data.publicUrl,path});
+  }
+  if(st)st.textContent='';
+  t.updated=new Date();await dbSaveTask(t);openTask(t.id);toast('File(s) attached 📎');
+}
 function commentsHTML(t){
   const cs=t.comments;const tops=cs.filter(c=>!c.parent);
   if(!tops.length)return '<div style="color:#999;font-size:12px">No comments yet — start the thread below.</div>';
@@ -875,6 +919,7 @@ function openTask(id){
     <div class="mfield"><label>Phase Subsection</label><select data-f="sub"><option value="" ${!t.sub?'selected':''}>— None —</option>${Object.keys(SUBPHASES).map(c=>`<option value="${c}" ${t.sub===c?'selected':''}>${c} — ${esc(SUBPHASES[c])}</option>`).join('')}</select></div>
     <div class="mfield"><label>Task type</label><select data-f="ttype">${TTYPES.map(v=>`<option ${t.ttype===v?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="mfield"><label>Application/Tool</label><select data-f="app">${APPS.map(v=>`<option value="${v}" ${(t.app||'')===v?'selected':''}>${v||'—'}</option>`).join('')}</select></div>
+    <div class="mfield"><label>Portal/Web</label><select data-f="portal">${PORTALS.map(v=>`<option value="${v}" ${(t.portal||'')===v?'selected':''}>${v||'—'}</option>`).join('')}</select></div>
     <div class="mfield"><label>Team Assigned</label><select data-f="team" id="m-team">${teamOptions(t.team)}</select></div>
     <div class="mfield"><label>Assignee</label><select data-f="as" id="m-as">${assigneeOptionsForTeam(t.team,t.as)}</select></div>
     <div class="mfield"><label>Priority</label><select data-f="pr">${['Urgent','High','Medium','Low'].map(p=>`<option ${t.pr===p?'selected':''}>${p}</option>`).join('')}</select></div>
@@ -895,7 +940,10 @@ function openTask(id){
     </div><div id="tosub-box"></div></div>`
   :`<div class="msec"><h4>🧩 Parent assignment</h4>
     <div class="mfield"><label>Assigned to parent (change or un-assign)</label><select id="parent-sel">${parentOptions(t)}</select></div></div>`}
-  <div class="msec"><h4>📎 Attachments</h4>${t.attachments.map(a=>`<span class="attach">📄 ${esc(a)}</span>`).join('')||'<span style="color:#999;font-size:12px">None</span>'} <button class="btn sec" style="padding:4px 12px;font-size:11px;margin-left:6px" onclick="toast('Upload — connect Supabase storage')">+ Add</button></div>
+  <div class="msec"><h4>📎 Attachments</h4><div id="attlist">${attachHTML(t)}</div>
+    <input type="file" id="attfile" multiple style="display:none">
+    <button class="btn sec" id="attadd" style="padding:5px 14px;font-size:11.5px;margin-top:8px">+ Add file</button>
+    <span id="attstatus" style="font-size:11.5px;color:var(--muted);margin-left:8px"></span></div>
   <div class="msec"><h4>💬 Comments</h4><div id="cthread">${commentsHTML(t)}</div>
   <div style="display:flex;gap:8px;margin-top:10px"><input id="newcomment" placeholder="Write a comment… use @Name to tag someone" autocomplete="off" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:7px"><button class="btn" id="addcbtn">Post</button></div></div>
   <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn" id="deltaskbtn" style="background:var(--pr-high)">🗑 Delete ${isSub?'subtask':'task'}</button></div>`;
@@ -958,6 +1006,15 @@ function openTask(id){
       closeModal();render();toast((isSub?'Subtask':'Task')+' deleted 🗑'+(kidIds.length?' (+'+kidIds.length+' subtasks)':''));};
     m.querySelector('#delno').onclick=()=>openTask(id);
   };
+  // --- attachments (Supabase Storage) ---
+  const af=m.querySelector('#attfile'),ab=m.querySelector('#attadd');
+  if(ab)ab.onclick=()=>af.click();
+  if(af)af.onchange=()=>{if(af.files&&af.files.length)uploadAttachments(t,[...af.files]);};
+  m.querySelectorAll('[data-attdel]').forEach(a=>a.onclick=async e=>{e.preventDefault();
+    const i=+a.dataset.attdel,meta=attMeta(t.attachments[i]);
+    t.attachments.splice(i,1);
+    if(DB&&USER&&meta.path)await DB.storage.from(FILE_BUCKET).remove([meta.path]);
+    await dbSaveTask(t);openTask(id);toast('Attachment removed');});
   // --- subtask management ---
   const op=m.querySelector('#openparent');if(op)op.onclick=e=>{e.preventDefault();openTask(t.parent);};
   m.querySelectorAll('[data-openkid]').forEach(l=>l.onclick=()=>openTask(+l.dataset.openkid));
@@ -1005,6 +1062,7 @@ function newTask(status,dueStr,parentId){
     <div class="mfield"><label>Phase Subsection</label><select id="nt-sub"><option value="">— None —</option>${Object.keys(SUBPHASES).map(c=>`<option value="${c}">${c} — ${esc(SUBPHASES[c])}</option>`).join('')}</select></div>
     <div class="mfield"><label>Task type</label><select id="nt-ttype">${TTYPES.map(v=>`<option>${v}</option>`).join('')}</select></div>
     <div class="mfield"><label>Application/Tool</label><select id="nt-app">${APPS.map(v=>`<option value="${v}">${v||'—'}</option>`).join('')}</select></div>
+    <div class="mfield"><label>Portal/Web</label><select id="nt-portal">${PORTALS.map(v=>`<option value="${v}">${v||'—'}</option>`).join('')}</select></div>
     <div class="mfield"><label>Status</label><select id="nt-status">${Object.keys(STATUS).map(s=>`<option value="${s}" ${s===(status||'todo')?'selected':''}>${STATUS[s].label}</option>`).join('')}</select></div>
     <div class="mfield"><label>Due date</label><input type="date" id="nt-due" value="${defDue}"></div>
     <div class="mfield"><label>Priority</label><select id="nt-pr"><option>Urgent</option><option>High</option><option selected>Medium</option><option>Low</option></select></div>
@@ -1022,7 +1080,7 @@ function newTask(status,dueStr,parentId){
     if(!title){toast('Give the task a name ✍️');$('#nt-title').focus();return;}
     const sub=$('#nt-sub').value||null;
     addTask({t:title,s:$('#nt-status').value,sub,ph:+$('#nt-ph').value||1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
-      ttype:$('#nt-ttype').value,app:$('#nt-app').value||'',parent:parentId||null,
+      ttype:$('#nt-ttype').value,app:$('#nt-app').value||'',portal:$('#nt-portal').value||'',parent:parentId||null,
       due:new Date($('#nt-due').value+'T12:00:00'),d:$('#nt-desc').value.trim(),w9:!!$('#nt-crit').value});
     applyStatusProgress(TASKS[TASKS.length-1]);
     dbInsertTask(TASKS[TASKS.length-1]);
@@ -1140,7 +1198,7 @@ function renderPhases(){
 /* ================= GANTT ================= */
 function ganttRow(t){
   const end=weekOf(t.due);const dur=Math.min(3,Math.max(1,Math.round(t.est/14)+1));const start=Math.max(1,end-dur+1);
-  const phGrad=t.ph===1?'linear-gradient(90deg,var(--p1a),var(--p1b))':'linear-gradient(90deg,var(--p2a),var(--p2b))';
+  const phGrad=t.ph===1?'linear-gradient(90deg,var(--p1a),var(--p1b))':t.ph===2?'linear-gradient(90deg,var(--p2a),var(--p2b))':'linear-gradient(90deg,#26a69a,#00796b)';
   const stCol=STATUS[t.s].color;
   let cells='';
   for(let w=1;w<=20;w++){
@@ -1263,7 +1321,7 @@ function burndownSVG(){
 function renderReports(){
   const c=counts();
   const sev={red:'#f44336',yellow:'#f9a825',green:'#4caf50'};
-  const MS=[['Aug 3','Critical path complete — farmer app MVP, payments, approvals',true],['Aug 4','🏦 BANK MEETING ('+DAYS_TO_BANK+' days away)',true],['Aug 7','Farmer + Field Agent apps complete (1B, 1C)',false],['Aug 11','Sync, error handling & security done (1E–1G)',false],['Aug 13','Full QA pass (1H)',false],['Aug 18','Admin portal live + Supabase cutover (1J)',false]];
+  const MS=[['Aug 3','Critical path complete — farmer app MVP, payments, approvals ✅',false],['Aug 4','🏦 BANK MEETING — COMPLETE ✅',false],['Aug 7','Farmer + Field Agent apps complete (1B, 1C)',false],['Aug 11','Sync, error handling & security done (1E–1G)',false],['Aug 13','Full QA pass (1H)',false],['Aug 18','Admin portal live + Supabase cutover (1J)',false]];
   const UTIL=[['Georgia (oversight + client)',40,40,'var(--pr-high)','FULL'],['Cursor — app build (1A–1I)',40,40,'var(--st-prog)','active'],['Loveable — admin portal (1J)',40,40,'var(--st-prog)','active'],['Field agents',0,40,'var(--st-todo)','post-launch']];
   $('#main').innerHTML=`<div class="sec-title">📊 Reports &amp; Analytics <span class="sub">week 3 of 20 · updated in real time</span></div>
   <div class="rep-grid">
@@ -1517,10 +1575,10 @@ function renderAssigneeFilter(){
   wireFilters();
 }
 
-function toRow(t){return {title:t.t,description:t.d,status:t.s,phase:t.ph,priority:t.pr,assignee:t.as,team:t.team||null,task_type:t.ttype||'Task',parent_id:t.parent||null,app_tool:t.app||null,subphase:t.sub||null,
+function toRow(t){return {title:t.t,description:t.d,status:t.s,phase:t.ph,priority:t.pr,assignee:t.as,team:t.team||null,task_type:t.ttype||'Task',parent_id:t.parent||null,app_tool:t.app||null,portal_web:t.portal||null,subphase:t.sub||null,
   due:t.due.toISOString().slice(0,10),progress:t.prog,est:t.est,spent:t.spent,risk:t.risk,w9:t.w9,
   deps:t.deps,subtasks:t.subtasks,comments:t.comments,attachments:t.attachments,reviewers:t.reviewers||null};}
-function fromRow(r){return {id:r.id,t:r.title,d:r.description||'',s:r.status,ph:r.phase,pr:r.priority,as:r.assignee,team:r.team||'',ttype:r.task_type||'Task',parent:r.parent_id||null,app:r.app_tool||'',sub:r.subphase||null,
+function fromRow(r){return {id:r.id,t:r.title,d:r.description||'',s:r.status,ph:r.phase,pr:r.priority,as:r.assignee,team:r.team||'',ttype:r.task_type||'Task',parent:r.parent_id||null,app:r.app_tool||'',portal:r.portal_web||'',sub:r.subphase||null,
   due:new Date(r.due+'T12:00:00'),prog:r.progress||0,est:r.est||8,spent:r.spent||0,risk:!!r.risk,w9:!!r.w9,
   deps:r.deps||[],subtasks:r.subtasks||[],comments:normComments(r.comments||[]),attachments:r.attachments||[],
   reviewers:r.reviewers||undefined,updated:new Date(r.updated_at||r.created_at)};}
