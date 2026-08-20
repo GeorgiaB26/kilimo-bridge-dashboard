@@ -478,7 +478,7 @@ let TASKS=[];let _id=0;
 function addTask(t){
   const due=t.due instanceof Date?t.due:new Date(t.due);
   TASKS.push(Object.assign({
-    id:++_id,ph:1,pr:'Medium',as:'Unassigned',team:'',ttype:'Task',parent:null,app:'',portal:'',d:'',prog:0,est:8,spent:0,risk:false,w9:false,deps:[],
+    id:++_id,ph:1,pr:'Medium',as:'Unassigned',team:'',ttype:'Task',parent:null,app:'',portal:'',d:'',sd:'',prog:0,est:8,spent:0,risk:false,w9:false,deps:[],
     subtasks:[],comments:[],attachments:[],updated:new Date(TODAY-Math.floor(rnd()*12)*864e5)
   },t,{due}));
 }
@@ -649,7 +649,7 @@ function cardHTML(t){
   const late=isOverdue(t);
   return `<div class="tcard ${late?'overdue':''}" draggable="true" data-id="${t.id}">
     <h5>📦 ${esc(t.t)}</h5>
-    ${t.d?`<div class="desc">${esc(t.d)}</div>`:''}
+    ${t.d?`<div class="desc" style="white-space:pre-wrap">${esc(t.d)}</div>`:''}
     <div class="trow">
       ${ttypePill(t)}<span class="pill ph${t.ph}" title="${esc(phaseName(t.ph))}">${esc(phaseName(t.ph).replace(/^Phase (\d+).*$/,'P$1'))}</span>${t.sub?`<span class="pill dep" title="${esc(SUBPHASES[t.sub]||'')}">${t.sub}</span>`:''}${t.w9?'<span class="pill hi">🏦 CRIT</span>':''}${childTasks(t).length?`<span class="pill dep" title="Subtasks — open task to manage">🧩 ${childTasks(t).length}</span>`:''}
       <span class="due ${late?'late':''}">📅 ${late?'⚠ ':''}${fmtD(t.due)}</span>
@@ -868,20 +868,22 @@ function attachHTML(t){
     return `<span class="attach">${m.url?`<a href="${esc(m.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">📄 ${esc(m.name)}</a>`:`📄 ${esc(m.name)}`}
       <a href="#" class="cact" data-attdel="${i}" title="Remove attachment" style="margin-left:4px">✕</a></span>`;}).join('');
 }
-async function uploadAttachments(t,files){
-  const st=$('#attstatus');
-  if(!DB||!USER){toast('Sign in to upload files');return;}
+async function uploadAttachments(t,files,statusSel,reopen){
+  const st=$(statusSel||'#attstatus');
+  if(!DB||!USER){toast('Sign in to upload files');return false;}
   for(const f of files){
     if(f.size>25*1024*1024){toast(f.name+' is over 25MB — too large');continue;}
     if(st)st.textContent='Uploading '+f.name+'…';
     const path='task-'+t.id+'/'+Date.now()+'-'+f.name.replace(/[^\w.\-]/g,'_');
     const {error}=await DB.storage.from(FILE_BUCKET).upload(path,f,{upsert:false});
-    if(error){toast('⚠ Upload failed: '+error.message);if(st)st.textContent='';return;}
+    if(error){toast('⚠ Upload failed: '+error.message);if(st)st.textContent='';return false;}
     const {data}=DB.storage.from(FILE_BUCKET).getPublicUrl(path);
     t.attachments.push({name:f.name,url:data.publicUrl,path});
   }
   if(st)st.textContent='';
-  t.updated=new Date();await dbSaveTask(t);openTask(t.id);toast('File(s) attached 📎');
+  t.updated=new Date();await dbSaveTask(t);
+  if(reopen!==false)openTask(t.id);
+  toast('File(s) attached 📎');return true;
 }
 function commentsHTML(t){
   const cs=t.comments;const tops=cs.filter(c=>!c.parent);
@@ -911,7 +913,8 @@ function openTask(id){
   ${ttypePill(t)} ${isSub?'<span class="pill dep">🧩 SUBTASK</span>':''} <span class="pill ph${t.ph}">${esc(phaseName(t.ph))}</span>${t.sub?`<span class="pill dep">${t.sub} · ${esc(SUBPHASES[t.sub]||'')}</span>`:''} ${t.w9?'<span class="pill hi">🏦 CRITICAL PATH</span>':''} ${t.risk?'<span class="pill risk">⚠ RISK FLAGGED</span>':''} ${isOverdue(t)?'<span class="pill hi">OVERDUE</span>':''}
   ${isSub?`<div style="margin-top:10px;background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12.5px">↳ Subtask of <a href="#" id="openparent" style="color:var(--green);font-weight:700">${esc(parentT?parentT.t:'(parent missing)')}</a></div>`:''}
   <div class="mfield" style="margin-top:10px"><label>Task title ✏️</label><input data-f="t" value="${esc(t.t)}" autocomplete="off" style="font-size:15px;font-weight:700;width:100%;padding:8px;border:1px solid var(--border);border-radius:7px"></div>
-  <div class="mfield" style="margin-top:8px"><label>Description ✏️</label><textarea data-f="d" style="width:100%;min-height:52px;padding:8px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px">${esc(t.d||'')}</textarea></div>
+  <div class="mfield" style="margin-top:8px"><label>Description ✏️</label><textarea data-f="d" placeholder="Press Enter for a new line" style="width:100%;min-height:62px;padding:8px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;resize:vertical">${esc(t.d||'')}</textarea></div>
+  <div class="mfield" style="margin-top:8px"><label>🎯 What should it do? ✏️</label><textarea data-f="sd" placeholder="Describe the expected behaviour — what the user should be able to do, and what happens when they do it." style="width:100%;min-height:62px;padding:8px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;resize:vertical">${esc(t.sd||'')}</textarea></div>
   <div class="mgrid">
     <div class="mfield"><label>Status</label><select data-f="s">${Object.keys(STATUS).map(s=>`<option value="${s}" ${t.s===s?'selected':''}>${STATUS[s].label}</option>`).join('')}</select></div>
     <div class="mfield"><label>Due date</label><input type="date" data-f="due" value="${t.due.toISOString().slice(0,10)}"></div>
@@ -1070,20 +1073,49 @@ function newTask(status,dueStr,parentId){
     <div class="mfield"><label>Assignee</label><select id="nt-as">${assigneeOptionsForTeam('','Unassigned')}</select></div>
     <div class="mfield"><label>🏦 Critical path (bank meeting)</label><select id="nt-crit"><option value="">No</option><option value="1">Yes — must finish by Aug 4</option></select></div>
   </div>
-  <div class="mfield"><label>Description</label><input id="nt-desc" placeholder="Optional detail" autocomplete="off"></div>
+  <div class="mfield"><label>Description</label><textarea id="nt-desc" placeholder="Optional detail — press Enter for a new line" style="width:100%;min-height:62px;padding:8px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;resize:vertical"></textarea></div>
+  <div class="mfield"><label>🎯 What should it do?</label><textarea id="nt-sd" placeholder="Describe the expected behaviour — what the user should be able to do, and what happens when they do it." style="width:100%;min-height:62px;padding:8px;border:1px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;resize:vertical"></textarea></div>
+  <div class="mfield"><label>📎 Attachments</label>
+    <div id="nt-attlist" style="color:#999;font-size:12px">None yet.</div>
+    <input type="file" id="nt-attfile" multiple style="display:none">
+    <button class="btn sec" id="nt-attadd" type="button" style="padding:5px 14px;font-size:11.5px;margin-top:8px">+ Add file</button>
+    <span id="nt-attstatus" style="font-size:11.5px;color:var(--muted);margin-left:8px"></span></div>
   <button class="btn" id="nt-save" style="width:100%;margin-top:14px">Create task</button>`;
   $('#modal-ov').classList.add('open');
   $('#nt-title').focus();
   $('#nt-team').onchange=()=>{$('#nt-as').innerHTML=assigneeOptionsForTeam($('#nt-team').value,'Unassigned');};
-  $('#nt-save').onclick=()=>{
+  // files are held here until the task exists, then uploaded against its new id
+  let pendingFiles=[];
+  const drawPending=()=>{
+    const box=$('#nt-attlist');
+    if(!pendingFiles.length){box.innerHTML='<span style="color:#999;font-size:12px">None yet.</span>';return;}
+    box.innerHTML=pendingFiles.map((f,i)=>`<span class="attach">📄 ${esc(f.name)}
+      <a href="#" class="cact" data-ntattdel="${i}" title="Remove" style="margin-left:4px">✕</a></span>`).join('');
+    box.querySelectorAll('[data-ntattdel]').forEach(a=>a.onclick=e=>{e.preventDefault();pendingFiles.splice(+a.dataset.ntattdel,1);drawPending();});
+  };
+  $('#nt-attadd').onclick=()=>$('#nt-attfile').click();
+  $('#nt-attfile').onchange=e=>{
+    for(const f of [...e.target.files]){
+      if(f.size>25*1024*1024){toast(f.name+' is over 25MB — too large');continue;}
+      pendingFiles.push(f);
+    }
+    e.target.value='';drawPending();
+  };
+  $('#nt-save').onclick=async()=>{
     const title=$('#nt-title').value.trim();
     if(!title){toast('Give the task a name ✍️');$('#nt-title').focus();return;}
     const sub=$('#nt-sub').value||null;
     addTask({t:title,s:$('#nt-status').value,sub,ph:+$('#nt-ph').value||1,pr:$('#nt-pr').value,as:$('#nt-as').value,team:$('#nt-team').value||'',
       ttype:$('#nt-ttype').value,app:$('#nt-app').value||'',portal:$('#nt-portal').value||'',parent:parentId||null,
-      due:new Date($('#nt-due').value+'T12:00:00'),d:$('#nt-desc').value.trim(),w9:!!$('#nt-crit').value});
-    applyStatusProgress(TASKS[TASKS.length-1]);
-    dbInsertTask(TASKS[TASKS.length-1]);
+      due:new Date($('#nt-due').value+'T12:00:00'),d:$('#nt-desc').value.trim(),sd:$('#nt-sd').value.trim(),w9:!!$('#nt-crit').value});
+    const nt=TASKS[TASKS.length-1];
+    applyStatusProgress(nt);
+    await dbInsertTask(nt);
+    if(pendingFiles.length){
+      $('#nt-save').disabled=true;
+      await uploadAttachments(nt,pendingFiles,'#nt-attstatus',false);
+      pendingFiles=[];
+    }
     if(parentId){render();openTask(parentId);}else{closeModal();render();}
     toast((parentId?'Subtask':'Task')+' created ✓');
   };
@@ -1575,10 +1607,10 @@ function renderAssigneeFilter(){
   wireFilters();
 }
 
-function toRow(t){return {title:t.t,description:t.d,status:t.s,phase:t.ph,priority:t.pr,assignee:t.as,team:t.team||null,task_type:t.ttype||'Task',parent_id:t.parent||null,app_tool:t.app||null,portal_web:t.portal||null,subphase:t.sub||null,
+function toRow(t){return {title:t.t,description:t.d,should_do:t.sd||null,status:t.s,phase:t.ph,priority:t.pr,assignee:t.as,team:t.team||null,task_type:t.ttype||'Task',parent_id:t.parent||null,app_tool:t.app||null,portal_web:t.portal||null,subphase:t.sub||null,
   due:t.due.toISOString().slice(0,10),progress:t.prog,est:t.est,spent:t.spent,risk:t.risk,w9:t.w9,
   deps:t.deps,subtasks:t.subtasks,comments:t.comments,attachments:t.attachments,reviewers:t.reviewers||null};}
-function fromRow(r){return {id:r.id,t:r.title,d:r.description||'',s:r.status,ph:r.phase,pr:r.priority,as:r.assignee,team:r.team||'',ttype:r.task_type||'Task',parent:r.parent_id||null,app:r.app_tool||'',portal:r.portal_web||'',sub:r.subphase||null,
+function fromRow(r){return {id:r.id,t:r.title,d:r.description||'',sd:r.should_do||'',s:r.status,ph:r.phase,pr:r.priority,as:r.assignee,team:r.team||'',ttype:r.task_type||'Task',parent:r.parent_id||null,app:r.app_tool||'',portal:r.portal_web||'',sub:r.subphase||null,
   due:new Date(r.due+'T12:00:00'),prog:r.progress||0,est:r.est||8,spent:r.spent||0,risk:!!r.risk,w9:!!r.w9,
   deps:r.deps||[],subtasks:r.subtasks||[],comments:normComments(r.comments||[]),attachments:r.attachments||[],
   reviewers:r.reviewers||undefined,updated:new Date(r.updated_at||r.created_at)};}
